@@ -36,6 +36,13 @@ struct TextInsertSet
 };
 typedef struct TextInsertSet TextInsertSet;
 
+typedef struct DynamicArray_ulong
+{
+    unsigned long *array;
+    unsigned int used_length;
+    unsigned int allocated_length;
+}
+
 //one character is 8x6; start in the top left corner, then scan vertically
 const char characters[] = {
     63, 72, 72, 72, 63, 0, //A
@@ -47,6 +54,37 @@ const char characters[] = {
     49, 73, 73, 73, 70, 0,//S (for typing ASDF)
     0, 0, 0, 0, 0, 0, 0,//Space
 };
+
+int
+initDynamicArray_ulong ( DynamicArray_ulong *array )
+{
+    array->used_length = 0;
+    array->array = malloc(4*sizeof(unsigned long));
+    if (!array->array)
+    {
+        printf("Error in initDynamicArray_ulong: malloc didn't work.\n");
+        return -1;
+    }
+    array->allocated_length = 4;
+    return 0;
+}
+
+int
+addToDynamicArray_ulong ( DynamicArray_ulong *array, unsigned long item )
+{
+    if (array->used_length == array->allocated_length)
+    {
+        if ( realloc(array->array, (array->allocated_length)*2*sizeof(unsigned long)) != array->array ) //if realloc moves the beginning of the array, this is bad anyway, and array->array won't be NULL
+        {
+            printf("Error in addToDynamicArray_ulong: realloc didn't work.\n");
+            return -1;
+        }
+        array->allocated_length *= 2;
+    }
+    array->array[array->used_length] = item;
+    array->used_length++;
+    return 0;
+}
 
 unsigned int
 get_string_length (char *buffer) //*not* counting the 0 at the end
@@ -150,7 +188,7 @@ quicksort (unsigned long *array, unsigned long min, unsigned long max)
         unsigned long i;
         *(array+max) = pivot_value;
         *(array+pivot) = temp_value;
-        for (i = min; i < max-1; i++)
+        for (i = min; i < max; i++)
         {
             if ( *(array+i) < pivot_value )
             {
@@ -176,6 +214,20 @@ quicksort (unsigned long *array, unsigned long min, unsigned long max)
         }
         quicksort(array, lower_index+1, max);
     }
+}
+
+long //so we can have all the unsigned ints *and* return -1 on not finding an insert
+getInsertByID (TextInsertSet *set, unsigned long selfID)
+{
+    unsigned int i;
+    for (i=0; i<set.count; i++)
+    {
+        if ((set->set)[i].selfID == selfID)
+        {
+            return i;
+        }
+    }
+    return -1;
 }
 
 int
@@ -213,23 +265,54 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos)
     unsigned int i;
     TextInsert current_insert;
     unsigned long current_selfID = 0 - 1;//I just want the highest value for unsigned long
+    DynamicArray_ulong IDs;
+    initDynamicArray_ulong(&IDs);
     for (i=0; i<set->count; i++)
     {
         TextInsert insert = *(set->set+i);
         if (insert.parentID == parentID && insert.charPos == charPos)
         {
-            if (insert.selfID < current_selfID)
+            addToDynamicArray_ulong(IDs, insert.selfID);
+            //if (insert.selfID < current_selfID)
+            //{
+            //    current_insert = insert;
+            //    current_selfID = insert.selfID;
+            //}
+        }
+    }
+
+    //sort all the inserts
+    quicksort(IDs.array, 0, IDs.used_length);
+
+    //render them in order
+    char *output_buffer = malloc(1);
+    output_buffer[0] = 0;
+    char *new_buffer;
+
+    for (i=0; i<IDs.used_length; i++)
+    {
+        //get insert
+        current_insert = getInsertByID(set, IDs.array[i]);
+
+        //draw it
+        int pos;
+        for (pos=0; pos<current_insert.length; pos++)
+        {
+            new_buffer = render_text(set, current_insert.selfID, pos);
+            string_concat(output_buffer, new_buffer);
+
+            //stick the appropriate letter on the back
+            if (current_insert.content[i] != 127)
             {
-                current_insert = insert;
-                current_selfID = insert.selfID;
+                int length = get_string_length(output_buffer);
+                realloc(output_buffer, length+1);
+                output_buffer[length-1] = current_insert.content[i];
+                output_buffer[length] = 0;
             }
         }
     }
-    if (current_selfID != 0-1) //NOTE: this won't work when someone really has that ID
-    {
-        //now we have to render that insert
-    }
-    //now we have to find the insert with next higher selfID and repeat
+
+    free(IDs.array);
     return output_buffer;
 }
 
