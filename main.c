@@ -41,7 +41,7 @@ typedef struct DynamicArray_ulong
     unsigned long *array;
     unsigned int used_length;
     unsigned int allocated_length;
-}
+} DynamicArray_ulong;
 
 //one character is 8x6; start in the top left corner, then scan vertically
 const char characters[] = {
@@ -74,7 +74,8 @@ addToDynamicArray_ulong ( DynamicArray_ulong *array, unsigned long item )
 {
     if (array->used_length == array->allocated_length)
     {
-        if ( realloc(array->array, (array->allocated_length)*2*sizeof(unsigned long)) != array->array ) //if realloc moves the beginning of the array, this is bad anyway, and array->array won't be NULL
+        array->array = realloc(array->array, (array->allocated_length)*2*sizeof(unsigned long));
+        if ( array->array == NULL )
         {
             printf("Error in addToDynamicArray_ulong: realloc didn't work.\n");
             return -1;
@@ -107,15 +108,15 @@ get_string_length (char *buffer) //*not* counting the 0 at the end
 
 
 void
-string_concat (char *buffer1, char *buffer2) //result will be in buffer1, both buffers must be 0-terminated
+string_concat (char **buffer1, char **buffer2) //result will be in buffer1, both buffers must be 0-terminated
 {
     unsigned int length1, length2, i;
-    length1 = get_string_length(buffer1);
-    length2 = get_string_length(buffer2);
-    buffer1 = realloc(buffer1, length1+length2+1);
+    length1 = get_string_length(*buffer1);
+    length2 = get_string_length(*buffer2);
+    *buffer1 = realloc(*buffer1, length1+length2+1);
     for (i=0; i<=length2; i++) //the <= is so we copy over the 0 byte from buffer2, too
     {
-        *(buffer1+length1+i) = *(buffer2+i);
+        *(*buffer1+length1+i) = *(*buffer2+i);
     }
     return;
 }
@@ -220,7 +221,7 @@ long //so we can have all the unsigned ints *and* return -1 on not finding an in
 getInsertByID (TextInsertSet *set, unsigned long selfID)
 {
     unsigned int i;
-    for (i=0; i<set.count; i++)
+    for (i=0; i<set->count; i++)
     {
         if ((set->set)[i].selfID == selfID)
         {
@@ -230,34 +231,34 @@ getInsertByID (TextInsertSet *set, unsigned long selfID)
     return -1;
 }
 
-int
-getInsertByParentID (TextInsertSet *set, unsigned long parentID, unsigned int count) //count is which find you want back
-{
-    unsigned long *IDlist = malloc(128*sizeof(unsigned long));
-    unsigned long *IDpointer = IDlist;
-    unsigned long currentID;
-    unsigned long i;
-    //minID = 0;
-    //maxID = 0;
-
-    //find all IDs
-    for (i=0; i<set->count; i++)
-    {
-        if ( (*(set->set+i)).parentID == parentID )
-        {
-                currentID = (*(set->set+i)).selfID;
-                *IDpointer++ = currentID;
-                //if (currentID < minID) minID = currentID;
-                //else if (currentID > maxID) maxID = currentID;
-        }
-    }
-
-    //sort them
-
-    
-    free(IDlist);
-    return -1;
-}
+//int
+//getInsertByParentID (TextInsertSet *set, unsigned long parentID, unsigned int count) //count is which find you want back
+//{
+//    unsigned long *IDlist = malloc(128*sizeof(unsigned long));
+//    unsigned long *IDpointer = IDlist;
+//    unsigned long currentID;
+//    unsigned long i;
+//    //minID = 0;
+//    //maxID = 0;
+//
+//    //find all IDs
+//    for (i=0; i<set->count; i++)
+//    {
+//        if ( (*(set->set+i)).parentID == parentID )
+//        {
+//                currentID = (*(set->set+i)).selfID;
+//                *IDpointer++ = currentID;
+//                //if (currentID < minID) minID = currentID;
+//                //else if (currentID > maxID) maxID = currentID;
+//        }
+//    }
+//
+//    //sort them
+//
+//    
+//    free(IDlist);
+//    return -1;
+//}
 
 char *
 render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos)
@@ -272,7 +273,7 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos)
         TextInsert insert = *(set->set+i);
         if (insert.parentID == parentID && insert.charPos == charPos)
         {
-            addToDynamicArray_ulong(IDs, insert.selfID);
+            addToDynamicArray_ulong(&IDs, insert.selfID);
             //if (insert.selfID < current_selfID)
             //{
             //    current_insert = insert;
@@ -282,7 +283,10 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos)
     }
 
     //sort all the inserts
-    quicksort(IDs.array, 0, IDs.used_length);
+    if (IDs.used_length > 0)
+    {
+        quicksort(IDs.array, 0, IDs.used_length-1);
+    }
 
     //render them in order
     char *output_buffer = malloc(1);
@@ -292,22 +296,23 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos)
     for (i=0; i<IDs.used_length; i++)
     {
         //get insert
-        current_insert = getInsertByID(set, IDs.array[i]);
+        current_insert = set->set[getInsertByID(set, IDs.array[i])];
 
         //draw it
         int pos;
         for (pos=0; pos<current_insert.length; pos++)
         {
             new_buffer = render_text(set, current_insert.selfID, pos);
-            string_concat(output_buffer, new_buffer);
+            string_concat(&output_buffer, &new_buffer);
 
             //stick the appropriate letter on the back
             if (current_insert.content[i] != 127)
             {
                 int length = get_string_length(output_buffer);
-                realloc(output_buffer, length+1);
-                output_buffer[length-1] = current_insert.content[i];
-                output_buffer[length] = 0;
+                output_buffer = realloc(output_buffer, length+2);
+                output_buffer[length] = current_insert.content[i];
+                output_buffer[length+1] = 0;
+                printf("%c", current_insert.content[i]);
             }
         }
     }
@@ -395,14 +400,44 @@ int main (void)
     set.activeTimer = 0;
     set.set = malloc(set.maxLength*sizeof(TextInsert));
     {
-        TextInsert start_insert = *set.set;
-        start_insert.parentID = 0;
-        start_insert.selfID = 1;
-        start_insert.charPos = 0;
-        start_insert.lock = 0;
-        start_insert.length = 0;
-        start_insert.content = NULL;
+        TextInsert *start_insert = &(set.set[0]);
+        start_insert->parentID = 0;
+        start_insert->selfID = 1;
+        start_insert->charPos = 0;
+        start_insert->lock = 0;
+        start_insert->length = 0;
+        start_insert->content = NULL;
+        set.count++;
     }
+
+    //insert mark test setup
+    {
+        TextInsert *insert = &(set.set[1]);
+        insert->selfID = 2;
+        insert->parentID = 0;
+        insert->charPos = 0;
+        insert->lock = 0;
+        insert->length = 6;
+        insert->content = malloc(7);
+        insert->content[0] = 72; insert->content[1] = 101; insert->content[2] = 108; insert->content[3] = 108; insert->content[4] = 111; insert->content[5] = 32; insert->content[6] = 0;
+        set.count++;
+
+        insert = &(set.set[2]);
+        insert->selfID = 3;
+        insert->parentID = 2;
+        insert->charPos = 6;
+        insert->lock = 0;
+        insert->length = 6;
+        insert->content = malloc(7);
+        insert->content[0] = 87; insert->content[1] = 111; insert->content[2] = 114; insert->content[3] = 108; insert->content[4] = 100; insert->content[5] = 33; insert->content[6] = 0;
+        set.count++;
+    }
+
+    //insert mark test
+    printf("render_text test:");
+    char *text = render_text(&set, 0, 0);
+    printf("\n");
+    printf("render_text test: %s\n", text);
 
 
     //main loop
