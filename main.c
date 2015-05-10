@@ -310,9 +310,9 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos)
             {
                 int length = get_string_length(output_buffer);
                 output_buffer = realloc(output_buffer, length+2);
-                output_buffer[length] = current_insert.content[i];
+                output_buffer[length] = current_insert.content[pos];
                 output_buffer[length+1] = 0;
-                printf("%c", current_insert.content[i]);
+                printf("%c", current_insert.content[pos]);
             }
         }
     }
@@ -425,7 +425,7 @@ int main (void)
         insert = &(set.set[2]);
         insert->selfID = 3;
         insert->parentID = 2;
-        insert->charPos = 6;
+        insert->charPos = 5;
         insert->lock = 0;
         insert->length = 6;
         insert->content = malloc(7);
