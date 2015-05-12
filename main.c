@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <SDL2/SDL.h>
+#include "dynamic_array.h"
 
 #define SETPIXEL(x, y, value) ( *(pixels+(x)+(y)*WINDOW_WIDTH) = (value) )
 
@@ -36,12 +37,6 @@ struct TextInsertSet
 };
 typedef struct TextInsertSet TextInsertSet;
 
-typedef struct DynamicArray_ulong
-{
-    unsigned long *array;
-    unsigned int used_length;
-    unsigned int allocated_length;
-} DynamicArray_ulong;
 
 //one character is 8x6; start in the top left corner, then scan vertically
 const char characters[] = {
@@ -54,38 +49,6 @@ const char characters[] = {
     49, 73, 73, 73, 70, 0,//S (for typing ASDF)
     0, 0, 0, 0, 0, 0, 0,//Space
 };
-
-int
-initDynamicArray_ulong ( DynamicArray_ulong *array )
-{
-    array->used_length = 0;
-    array->array = malloc(4*sizeof(unsigned long));
-    if (!array->array)
-    {
-        printf("Error in initDynamicArray_ulong: malloc didn't work.\n");
-        return -1;
-    }
-    array->allocated_length = 4;
-    return 0;
-}
-
-int
-addToDynamicArray_ulong ( DynamicArray_ulong *array, unsigned long item )
-{
-    if (array->used_length == array->allocated_length)
-    {
-        array->array = realloc(array->array, (array->allocated_length)*2*sizeof(unsigned long));
-        if ( array->array == NULL )
-        {
-            printf("Error in addToDynamicArray_ulong: realloc didn't work.\n");
-            return -1;
-        }
-        array->allocated_length *= 2;
-    }
-    array->array[array->used_length] = item;
-    array->used_length++;
-    return 0;
-}
 
 unsigned int
 get_string_length (char *buffer) //*not* counting the 0 at the end
@@ -268,6 +231,7 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos)
     unsigned long current_selfID = 0 - 1;//I just want the highest value for unsigned long
     DynamicArray_ulong IDs;
     initDynamicArray_ulong(&IDs);
+
     for (i=0; i<set->count; i++)
     {
         TextInsert insert = *(set->set+i);
@@ -288,10 +252,13 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos)
         quicksort(IDs.array, 0, IDs.used_length-1);
     }
 
+
     //render them in order
     char *output_buffer = malloc(1);
     output_buffer[0] = 0;
     char *new_buffer;
+    DynamicArray_ulong ID_table; //stores the ID of the insertion mark which contains each character. TODO: this is terribly inefficient with memory. fix sometime.
+    initDynamicArray_ulong(&ID_table);
 
     for (i=0; i<IDs.used_length; i++)
     {
@@ -318,6 +285,7 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos)
     }
 
     free(IDs.array);
+    free(ID_table.array);
     return output_buffer;
 }
 
@@ -449,7 +417,7 @@ int main (void)
     TextBuffer buffer;
     buffer.length = 20;
     buffer.cursor = 0;
-    buffer.buffer = (char *) malloc(20);
+    buffer.buffer = (char *) malloc(21);
     { //clear buffer
         int i;
         for (i = 0; i<20; i++)
@@ -457,6 +425,7 @@ int main (void)
             buffer.buffer[i] = 8;
         }
     }
+    buffer.buffer[20] = 0;
 
     //short unsigned cursor = 0;
     char unsigned blink_timer = 0;
