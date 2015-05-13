@@ -223,8 +223,8 @@ getInsertByID (TextInsertSet *set, unsigned long selfID)
 //    return -1;
 //}
 
-char *
-render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos)
+void
+render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos, DynamicArray_char *output_buffer, DynamicArray_ulong *ID_table)//output_buffer needs to be initialized; ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character. TODO: this is terribly inefficient with memory. fix sometime.
 {
     unsigned int i;
     TextInsert current_insert;
@@ -254,11 +254,9 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos)
 
 
     //render them in order
-    char *output_buffer = malloc(1);
-    output_buffer[0] = 0;
-    char *new_buffer;
-    DynamicArray_ulong ID_table; //stores the ID of the insertion mark which contains each character. TODO: this is terribly inefficient with memory. fix sometime.
-    initDynamicArray_ulong(&ID_table);
+    //char *output_buffer = malloc(1);
+    //output_buffer[0] = 0;
+    //char *new_buffer;
 
     for (i=0; i<IDs.used_length; i++)
     {
@@ -269,24 +267,26 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos)
         int pos;
         for (pos=0; pos<current_insert.length; pos++)
         {
-            new_buffer = render_text(set, current_insert.selfID, pos);
-            string_concat(&output_buffer, &new_buffer);
+            //new_buffer = render_text(set, current_insert.selfID, pos);
+            render_text(set, current_insert.selfID, pos, output_buffer, ID_table);
+            //string_concat(&output_buffer, &new_buffer);
 
             //stick the appropriate letter on the back
             if (current_insert.content[i] != 127)
             {
-                int length = get_string_length(output_buffer);
-                output_buffer = realloc(output_buffer, length+2);
-                output_buffer[length] = current_insert.content[pos];
-                output_buffer[length+1] = 0;
+                addToDynamicArray_char(output_buffer, current_insert.content[pos]);
+                addToDynamicArray_ulong(ID_table, current_insert.selfID);
+                //int length = get_string_length(output_buffer);
+                //output_buffer = realloc(output_buffer, length+2);
+                //output_buffer[length] = current_insert.content[pos];
+                //output_buffer[length+1] = 0;
                 printf("%c", current_insert.content[pos]);
             }
         }
     }
 
     free(IDs.array);
-    free(ID_table.array);
-    return output_buffer;
+    //return output_buffer;
 }
 
 
@@ -393,7 +393,7 @@ int main (void)
         insert = &(set.set[2]);
         insert->selfID = 3;
         insert->parentID = 2;
-        insert->charPos = 5;
+        insert->charPos = 3;
         insert->lock = 0;
         insert->length = 6;
         insert->content = malloc(7);
@@ -403,8 +403,14 @@ int main (void)
 
     //insert mark test
     printf("render_text test:");
-    char *text = render_text(&set, 0, 0);
+    DynamicArray_char output_buffer;
+    initDynamicArray_char(&output_buffer);
+    DynamicArray_ulong ID_table;
+    initDynamicArray_ulong(&ID_table);
+    render_text(&set, 0, 0, &output_buffer, &ID_table);
     printf("\n");
+    addToDynamicArray_char(&output_buffer, 0);
+    char *text = output_buffer.array;
     printf("render_text test: %s\n", text);
 
 
