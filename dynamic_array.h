@@ -32,4 +32,25 @@ addToDynamicArray_char ( DynamicArray_char *array, char item );
 
 int
 concatDynamicArrays_char ( DynamicArray_char *array1, DynamicArray_char *array2 ); //result will be in array1
+
+#ifdef MAIN_H
+
+typedef struct TextInsertSet
+{
+    TextInsert *array;
+    unsigned int used_length;
+    unsigned int allocated_length;
+} TextInsertSet;
+
+int
+initTextInsertSet ( TextInsertSet *array );
+
+int
+addToTextInsertSet ( TextInsertSet *array, TextInsert item );
+
+int
+concatTextInsertSets ( TextInsertSet *array1, TextInsertSet *array2 ); //result will be in array1
+
+#endif
+
 #endif
