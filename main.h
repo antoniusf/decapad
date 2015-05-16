@@ -5,9 +5,7 @@ typedef unsigned long insertID;
 
 struct TextBuffer
 {
-    unsigned short length;
     unsigned short cursor;
-    char *buffer;
     insertID activeInsertID;
 
 };
