@@ -264,12 +264,12 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos,
 }
 
 
-unsigned short
+int
 insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_table, char letter)
 {
     //if (set.activeInsert == -1) 
-    //{
-    //    if (set.count < set.maxLength) {
+    //{}
+    //    if (set.count < set.maxLength) {}
     //        active_insert = *(set.set+set.count);
     //        set.activeInsert = set.count;
     //        set.activeTimer = 5000;
@@ -278,32 +278,44 @@ insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_ta
     //        active_insert.parentID
 
 
-
-    unsigned short pos = buffer->cursor;
-    unsigned long insert_ID = ID_table->array[pos];
-
-    unsigned short charPos = 0;
-    unsigned short i;
-    for (i=0; i<pos; i++)
+    if (buffer->activeInsertID)
     {
-        if ( ID_table->array[i] == insert_ID )
-        {
-            charPos++;
-        }
+        TextInsert *insert = set->array + getInsertByID(set, buffer->activeInsertID);
+        insert->content = realloc(insert->content, insert->length+1);
+        insert->content[insert->length] = letter;
+        insert->length++;
     }
 
+    else
+    {
 
-    TextInsert new_insert;
-    new_insert.selfID = set->used_length + 1;
-    new_insert.parentID = insert_ID;
-    new_insert.charPos = charPos;
-    new_insert.lock = 0;
-    new_insert.length = 1;
-    new_insert.content = malloc(1);
-    new_insert.content[0] = letter;
+        unsigned short pos = buffer->cursor;
+        unsigned long insert_ID = ID_table->array[pos];
 
-    addToTextInsertSet(set, new_insert);
+        unsigned short charPos = 0;
+        unsigned short i;
+        for (i=0; i<pos; i++)
+        {
+            if ( ID_table->array[i] == insert_ID )
+            {
+                charPos++;
+            }
+        }
 
+
+        TextInsert new_insert;
+        new_insert.selfID = set->used_length + 1;
+        new_insert.parentID = insert_ID;
+        new_insert.charPos = charPos;
+        new_insert.lock = 0;
+        new_insert.length = 1;
+        new_insert.content = malloc(1);
+        new_insert.content[0] = letter;
+
+        addToTextInsertSet(set, new_insert);
+        buffer->activeInsertID = new_insert.selfID;
+
+    }
     buffer->cursor++;
     //char *pointer = buffer->buffer;
 
@@ -323,6 +335,28 @@ insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_ta
     //}
     //buffer->cursor++;
     //return 1;
+    return 0;
+}
+
+int
+delete_letter ( TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_table, unsigned short pos )
+{
+    if (pos < ID_table->used_length)
+    {
+        unsigned long insert_ID = ID_table->array[pos];
+        unsigned short inner_pos = 0;
+        int i;
+        for (i=0; i<pos; i++)
+        {
+            if (ID_table->array[i] == insert_ID)
+            {
+                inner_pos++;
+            }
+        }
+
+        TextInsert *insert = set->array + getInsertByID(set, insert_ID);
+        insert->content[inner_pos] = 127;
+    }
     return 0;
 }
 
@@ -372,7 +406,7 @@ int main (void)
         start_insert.lock = 0;
         start_insert.length = 1;
         start_insert.content = malloc(1);
-        start_insert.content[0] = 32;
+        start_insert.content[0] = 1; //<- WHEN DEBUGGING, WATCH THIS!!!
         addToTextInsertSet(&set, start_insert);
     }
 
@@ -424,7 +458,7 @@ int main (void)
     TextBuffer buffer;
     buffer.length = 20;
     buffer.cursor = 0;
-    buffer.buffer = output_buffer.array; //simple hack so that buffer.buffer now gets its contents out of the dynamic array used for rendering
+    buffer.buffer = output_buffer.array; //simple hack so that buffer.buffer now gets its contents out of the dynamic array used for rendering //*except* when output_buffer.array is relocated by realloc (because it does that), and then buffer.buffer just points to some random memory location, and you see funny stuff on the screen m(
     //buffer.buffer = (char *) malloc(21);
     //{ //clear buffer
     //    int i;
@@ -455,42 +489,42 @@ int main (void)
                     {
                         case SDLK_a:
                         {
-                            insert_letter(&buffer, &set, &ID_table, 1+64);
+                            insert_letter(&buffer, &set, &ID_table, 1);
                         } break;
                         
                         case SDLK_b:
                         {
-                            insert_letter(&buffer, &set, &ID_table, 2+64);
+                            insert_letter(&buffer, &set, &ID_table, 2);
                         } break;
 
                         case SDLK_c:
                         {
-                            insert_letter(&buffer, &set, &ID_table, 3+64);
+                            insert_letter(&buffer, &set, &ID_table, 3);
                         } break;
 
                         case SDLK_d:
                         {
-                            insert_letter(&buffer, &set, &ID_table, 4+64);
+                            insert_letter(&buffer, &set, &ID_table, 4);
                         } break;
 
                         case SDLK_e:
                         {
-                            insert_letter(&buffer, &set, &ID_table, 5+64);
+                            insert_letter(&buffer, &set, &ID_table, 5);
                         } break;
 
                         case SDLK_f:
                         {
-                            insert_letter(&buffer, &set, &ID_table, 6+64);
+                            insert_letter(&buffer, &set, &ID_table, 6);
                         } break;
 
                         case SDLK_s:
                         {
-                            insert_letter(&buffer, &set, &ID_table, 7+64);
+                            insert_letter(&buffer, &set, &ID_table, 7);
                         } break;
 
                         case SDLK_SPACE:
                         {
-                            insert_letter(&buffer, &set, &ID_table, 8+64);
+                            insert_letter(&buffer, &set, &ID_table, 8);
                         } break;
 
                         case SDLK_RETURN:
@@ -503,7 +537,7 @@ int main (void)
                             if (buffer.cursor > 0)
                             {
                                 buffer.cursor--;
-                                buffer.buffer[buffer.cursor] = 8;
+                                delete_letter (&buffer, &set, &ID_table, buffer.cursor);
                             }
                         } break;
 
@@ -512,6 +546,7 @@ int main (void)
                             if (buffer.cursor < buffer.length-1)
                             {
                                 buffer.cursor++;
+                                buffer.activeInsertID = 0;
                             }
                         } break;
 
@@ -520,6 +555,7 @@ int main (void)
                             if (buffer.cursor > 0)
                             {
                                 buffer.cursor--;
+                                buffer.activeInsertID = 0;
                             }
                         } break;
 
@@ -536,7 +572,7 @@ int main (void)
                     ID_table.used_length = 0;
                     render_text(&set, 0, 0, &output_buffer, &ID_table);
                     addToDynamicArray_char(&output_buffer, 0);
-                    printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
+                    //printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
 
                 } break;
 
@@ -553,6 +589,8 @@ int main (void)
                 pointer++;
             }
         }
+
+        buffer.buffer = output_buffer.array;
         if (blink_timer < 128)
         {
             draw_text(buffer, 10, 10, pixels, 1);
