@@ -75,13 +75,11 @@ draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint3
 
     while ((character=(*index++)))
     {
-        if (character == 9) {
+        if (character == 10) {
             x = zero_x;
             y += 9;
         }
         else {
-            character += 64;
-            
             error = FT_Load_Char( fontface, character, FT_LOAD_RENDER );
 
             FT_Bitmap bitmap = fontface->glyph->bitmap;
@@ -414,49 +412,61 @@ int main (void)
                     quit = 1;
                     break;
 
+                case SDL_TEXTINPUT:
+                {
+                    insert_letter(&buffer, &set, &ID_table, e.text.text[0]);
+                    blink_timer = 0;
+
+                    //update buffer
+                    output_buffer.used_length = 0;
+                    ID_table.used_length = 0;
+                    render_text(&set, 0, 0, &output_buffer, &ID_table);
+                    addToDynamicArray_char(&output_buffer, 0);
+                } break;
+
                 case SDL_KEYDOWN:
                 {
                     switch (e.key.keysym.sym)
                     {
-                        case SDLK_a:
-                        {
-                            insert_letter(&buffer, &set, &ID_table, 1);
-                        } break;
-                        
-                        case SDLK_b:
-                        {
-                            insert_letter(&buffer, &set, &ID_table, 2);
-                        } break;
+                //        case SDLK_a:
+                //        {
+                //            insert_letter(&buffer, &set, &ID_table, 1);
+                //        } break;
+                //        
+                //        case SDLK_b:
+                //        {
+                //            insert_letter(&buffer, &set, &ID_table, 2);
+                //        } break;
 
-                        case SDLK_c:
-                        {
-                            insert_letter(&buffer, &set, &ID_table, 3);
-                        } break;
+                //        case SDLK_c:
+                //        {
+                //            insert_letter(&buffer, &set, &ID_table, 3);
+                //        } break;
 
-                        case SDLK_d:
-                        {
-                            insert_letter(&buffer, &set, &ID_table, 4);
-                        } break;
+                //        case SDLK_d:
+                //        {
+                //            insert_letter(&buffer, &set, &ID_table, 4);
+                //        } break;
 
-                        case SDLK_e:
-                        {
-                            insert_letter(&buffer, &set, &ID_table, 5);
-                        } break;
+                //        case SDLK_e:
+                //        {
+                //            insert_letter(&buffer, &set, &ID_table, 5);
+                //        } break;
 
-                        case SDLK_f:
-                        {
-                            insert_letter(&buffer, &set, &ID_table, 6);
-                        } break;
+                //        case SDLK_f:
+                //        {
+                //            insert_letter(&buffer, &set, &ID_table, 6);
+                //        } break;
 
-                        case SDLK_s:
-                        {
-                            insert_letter(&buffer, &set, &ID_table, 7);
-                        } break;
+                //        case SDLK_s:
+                //        {
+                //            insert_letter(&buffer, &set, &ID_table, 7);
+                //        } break;
 
-                        case SDLK_SPACE:
-                        {
-                            insert_letter(&buffer, &set, &ID_table, 8);
-                        } break;
+                //        case SDLK_SPACE:
+                //        {
+                //            insert_letter(&buffer, &set, &ID_table, 8);
+                //        } break;
 
                         case SDLK_RETURN:
                         {
