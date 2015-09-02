@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
 #include <SDL2/SDL.h>
 #include "main.h"
 #include "dynamic_array.h"
@@ -56,7 +58,7 @@ string_concat (char **buffer1, char **buffer2) //result will be in buffer1, both
 }
 
 void
-draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint32 *pixels, char show_cursor)
+draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint32 *pixels, char show_cursor, FT_Face fontface)
 {
     unsigned short inverted_pos = buffer->cursor + 1; //NOTE(tony): what if the buffer is too long?
     if (!show_cursor)
@@ -69,6 +71,7 @@ draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint3
     char *index = text;
     char *inverted_char = text+inverted_pos;
     unsigned int zero_x = x;
+    int error;
 
     while ((character=(*index++)))
     {
@@ -77,36 +80,46 @@ draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint3
             y += 9;
         }
         else {
-            data = ((char *) characters)+(character-1/*-65*/)*6;
-            for (i = 0; i<6; i++)
+            character += 64;
+            
+            error = FT_Load_Char( fontface, character, FT_LOAD_RENDER );
+
+            FT_Bitmap bitmap = fontface->glyph->bitmap;
+
+            if ( bitmap.pixel_mode != FT_PIXEL_MODE_GRAY )
             {
-                if (index==inverted_char)
-                {
-                    char dataval = ~(*data);
-                    SETPIXEL(x, y, (dataval & (1<<7))*0xffffffff);
-                    SETPIXEL(x, y+1, (dataval & (1<<6))*0xffffffff);
-                    SETPIXEL(x, y+2, (dataval & (1<<5))*0xffffffff);
-                    SETPIXEL(x, y+3, (dataval & (1<<4))*0xffffffff);
-                    SETPIXEL(x, y+4, (dataval & (1<<3))*0xffffffff);
-                    SETPIXEL(x, y+5, (dataval & (1<<2))*0xffffffff);
-                    SETPIXEL(x, y+6, (dataval & (1<<1))*0xffffffff);
-                    SETPIXEL(x, y+7, (dataval & (1<<0))*0xffffffff);
-                }
-                else
-                {
-                    SETPIXEL(x, y, (*data & (1<<7))*0xffffffff);
-                    SETPIXEL(x, y+1, (*data & (1<<6))*0xffffffff);
-                    SETPIXEL(x, y+2, (*data & (1<<5))*0xffffffff);
-                    SETPIXEL(x, y+3, (*data & (1<<4))*0xffffffff);
-                    SETPIXEL(x, y+4, (*data & (1<<3))*0xffffffff);
-                    SETPIXEL(x, y+5, (*data & (1<<2))*0xffffffff);
-                    SETPIXEL(x, y+6, (*data & (1<<1))*0xffffffff);
-                    SETPIXEL(x, y+7, (*data & (1<<0))*0xffffffff);
-                }
-                data++;
-                x++;
+                printf("Not the right Freetype glyph bitmap pixel mode! Sorry, it ran on my computer...\n");
+                return;
             }
-            x++;
+
+            else
+            {
+                //copy glyph into pixel array
+
+                unsigned int target_x, target_y;
+                target_x = x + fontface->glyph->bitmap_left;
+                target_y = y - fontface->glyph->bitmap_top;
+
+                if ( bitmap.pitch < 0 )
+                {
+                    printf("Freetype glyph bitmap pitch is negative. Surely wasn't expecting that...\n");
+                    return;
+                }
+
+                unsigned int row;
+                unsigned int col;
+                unsigned char *buffer = (unsigned char *) (bitmap.buffer);
+                for ( row = 0; row < bitmap.rows; row++ )
+                {
+                    for ( col = 0; col < bitmap.width; col++ )
+                    {
+                        Uint32 color = *( buffer + row * (bitmap.pitch) + col );
+                        SETPIXEL(target_x+col, target_y+row, (color<<24)+(color<<16)+(color<<8)+255);
+                    }
+                }
+            }
+
+            x += fontface->glyph->advance.x >> 6;
         }
     }
 }
@@ -297,7 +310,30 @@ delete_letter ( TextInsertSet *set, DynamicArray_ulong *ID_table, unsigned short
 int main (void)
 {
 
-    //Setup
+    //Freetype Setup
+
+
+    int error;
+    
+    FT_Library ft_library;
+    error = FT_Init_FreeType( &ft_library);
+    if (error)
+    {
+        printf("FreeType initialization failed.\n");
+        return 1;
+    }
+
+    FT_Face fontface;
+    error = FT_New_Face( ft_library, "ClearSans-Regular.ttf", 0, &fontface);
+    if ( error )
+    {
+        printf("Font could not be loaded.\n");
+        return 1;
+    }
+
+    error = FT_Set_Char_Size( fontface, 0, 16*64, 300, 300);
+
+    //SDL Setup
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         printf("SDL initialization failed: %s", SDL_GetError());
@@ -487,11 +523,11 @@ int main (void)
 
         if (blink_timer < 128)
         {
-            draw_text(&buffer, output_buffer.array, 10, 10, pixels, 1);
+            draw_text(&buffer, output_buffer.array, 10, 100, pixels, 1, fontface);
         }
         else
         {
-            draw_text(&buffer, output_buffer.array, 10, 10, pixels, 0);
+            draw_text(&buffer, output_buffer.array, 10, 100, pixels, 0, fontface);
         }
         SDL_UpdateTexture(texture, NULL, pixels, WINDOW_WIDTH*sizeof(Uint32));
         SDL_RenderClear(renderer);
