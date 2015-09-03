@@ -117,6 +117,21 @@ draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint3
                 }
             }
 
+            if ( index == inverted_char )
+            {
+                SETPIXEL(x, y, 0xFFFFFFFF);
+                SETPIXEL(x, y+1, 0xFFFFFFFF);
+                SETPIXEL(x, y+2, 0xFFFFFFFF);
+                SETPIXEL(x, y+3, 0xFFFFFFFF);
+                SETPIXEL(x, y+4, 0xFFFFFFFF);
+                SETPIXEL(x, y+5, 0xFFFFFFFF);
+                SETPIXEL(x, y+6, 0xFFFFFFFF);
+                SETPIXEL(x, y+7, 0xFFFFFFFF);
+                SETPIXEL(x, y+8, 0xFFFFFFFF);
+                SETPIXEL(x, y+9, 0xFFFFFFFF);
+                SETPIXEL(x, y+10, 0xFFFFFFFF);
+            }
+
             x += fontface->glyph->advance.x >> 6;
         }
     }
@@ -177,7 +192,7 @@ getInsertByID (TextInsertSet *set, unsigned long selfID)
 }
 
 void
-render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos, DynamicArray_char *output_buffer, DynamicArray_ulong *ID_table)//output_buffer needs to be initialized; ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character. TODO: this is terribly inefficient with memory. fix sometime.
+render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos, DynamicArray_char *output_buffer, DynamicArray_ulong *ID_table, DynamicArray_ulong *charPos_table)//output_buffer needs to be initialized; ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character. TODO: this is terribly inefficient with memory. fix sometime.
 {
     unsigned int i;
     TextInsert current_insert;
@@ -212,13 +227,14 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos,
         for (pos=0; pos<current_insert.length; pos++)
         {
             //render the inserts before this character position
-            render_text(set, current_insert.selfID, pos, output_buffer, ID_table);
+            render_text(set, current_insert.selfID, pos, output_buffer, ID_table, charPos_table);
 
             //stick the appropriate letter on the back
             if (current_insert.content[pos] != 127)
             {
                 addToDynamicArray_char(output_buffer, current_insert.content[pos]);
                 addToDynamicArray_ulong(ID_table, current_insert.selfID);
+                addToDynamicArray_ulong(charPos_table, pos);
                 //int length = get_string_length(output_buffer);
                 //output_buffer = realloc(output_buffer, length+2);
                 //output_buffer[length] = current_insert.content[pos];
@@ -227,7 +243,7 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos,
             }
         }
 
-        render_text(set, current_insert.selfID, current_insert.length, output_buffer, ID_table);
+        render_text(set, current_insert.selfID, current_insert.length, output_buffer, ID_table, charPos_table);
     }
 
     free(IDs.array);
@@ -236,7 +252,7 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos,
 
 
 int
-insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_table, char letter)
+insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_table, DynamicArray_ulong *charPos_table, char letter)
 {
 
     if (buffer->activeInsertID)
@@ -254,14 +270,7 @@ insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_ta
         unsigned long insert_ID = ID_table->array[pos];
 
         unsigned short charPos = 0;
-        unsigned short i;
-        for (i=0; i<pos; i++)
-        {
-            if ( ID_table->array[i] == insert_ID )
-            {
-                charPos++;
-            }
-        }
+        charPos = charPos_table->array[pos];
 
 
         TextInsert new_insert;
@@ -283,20 +292,13 @@ insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_ta
 }
 
 int
-delete_letter ( TextInsertSet *set, DynamicArray_ulong *ID_table, unsigned short pos )
+delete_letter ( TextInsertSet *set, DynamicArray_ulong *ID_table, DynamicArray_ulong *charPos_table, unsigned short pos )
 {
     if (pos < ID_table->used_length)
     {
         unsigned long insert_ID = ID_table->array[pos];
         unsigned short inner_pos = 0;
-        int i;
-        for (i=0; i<pos; i++)
-        {
-            if (ID_table->array[i] == insert_ID)
-            {
-                inner_pos++;
-            }
-        }
+        inner_pos = charPos_table->array[pos];
 
         TextInsert *insert = set->array + getInsertByID(set, insert_ID);
         insert->content[inner_pos] = 127;
@@ -373,18 +375,20 @@ int main (void)
         start_insert.lock = 0;
         start_insert.length = 1;
         start_insert.content = malloc(1);
-        start_insert.content[0] = 1; //<- WHEN DEBUGGING, WATCH THIS!!!
+        start_insert.content[0] = 65; //<- WHEN DEBUGGING, WATCH THIS!!!
         addToTextInsertSet(&set, start_insert);
     }
 
 
     DynamicArray_char output_buffer;
     DynamicArray_ulong ID_table;
+    DynamicArray_ulong charPos_table;
 
     initDynamicArray_char(&output_buffer);
     initDynamicArray_ulong(&ID_table);
+    initDynamicArray_ulong(&charPos_table);
 
-    render_text(&set, 0, 0, &output_buffer, &ID_table);
+    render_text(&set, 0, 0, &output_buffer, &ID_table, &charPos_table);
     addToDynamicArray_char(&output_buffer, 0);
 
 
@@ -414,13 +418,14 @@ int main (void)
 
                 case SDL_TEXTINPUT:
                 {
-                    insert_letter(&buffer, &set, &ID_table, e.text.text[0]);
+                    insert_letter(&buffer, &set, &ID_table, &charPos_table, e.text.text[0]);
                     blink_timer = 0;
 
                     //update buffer
                     output_buffer.used_length = 0;
                     ID_table.used_length = 0;
-                    render_text(&set, 0, 0, &output_buffer, &ID_table);
+                    charPos_table.used_length = 0;
+                    render_text(&set, 0, 0, &output_buffer, &ID_table, &charPos_table);
                     addToDynamicArray_char(&output_buffer, 0);
                 } break;
 
@@ -470,7 +475,7 @@ int main (void)
 
                         case SDLK_RETURN:
                         {
-                            insert_letter(&buffer, &set, &ID_table, 10);
+                            insert_letter(&buffer, &set, &ID_table, &charPos_table, 10);
                         } break;
 
                         case SDLK_BACKSPACE:
@@ -478,7 +483,7 @@ int main (void)
                             if (buffer.cursor > 0)
                             {
                                 buffer.cursor--;
-                                delete_letter (&set, &ID_table, buffer.cursor);
+                                delete_letter (&set, &ID_table, &charPos_table, buffer.cursor);
                             }
                         } break;
 
@@ -511,9 +516,10 @@ int main (void)
                     //update buffer
                     output_buffer.used_length = 0;
                     ID_table.used_length = 0;
-                    render_text(&set, 0, 0, &output_buffer, &ID_table);
+                    charPos_table.used_length = 0;
+                    render_text(&set, 0, 0, &output_buffer, &ID_table, &charPos_table);
                     addToDynamicArray_char(&output_buffer, 0);
-                    //printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
+                    printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
 
                 } break;
 
