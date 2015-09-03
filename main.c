@@ -72,12 +72,13 @@ draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint3
     char *inverted_char = text+inverted_pos;
     unsigned int zero_x = x;
     int error;
+    int height = (int) fontface->size->metrics.height / 64;
 
     while ((character=(*index++)))
     {
         if (character == 10) {
             x = zero_x;
-            y += 9;
+            y += height;
         }
         else {
             error = FT_Load_Char( fontface, character, FT_LOAD_RENDER );
@@ -119,17 +120,11 @@ draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint3
 
             if ( index == inverted_char )
             {
-                SETPIXEL(x, y, 0xFFFFFFFF);
-                SETPIXEL(x, y+1, 0xFFFFFFFF);
-                SETPIXEL(x, y+2, 0xFFFFFFFF);
-                SETPIXEL(x, y+3, 0xFFFFFFFF);
-                SETPIXEL(x, y+4, 0xFFFFFFFF);
-                SETPIXEL(x, y+5, 0xFFFFFFFF);
-                SETPIXEL(x, y+6, 0xFFFFFFFF);
-                SETPIXEL(x, y+7, 0xFFFFFFFF);
-                SETPIXEL(x, y+8, 0xFFFFFFFF);
-                SETPIXEL(x, y+9, 0xFFFFFFFF);
-                SETPIXEL(x, y+10, 0xFFFFFFFF);
+                int i;
+                for ( i=0; i<height; i++ )
+                {
+                    SETPIXEL(x, y-i+height/8, 0xFFFFFFFF);
+                }
             }
 
             x += fontface->glyph->advance.x >> 6;
@@ -325,7 +320,7 @@ int main (void)
         return 1;
     }
 
-    error = FT_Set_Char_Size( fontface, 0, 16*64, 300, 300);
+    error = FT_Set_Pixel_Sizes(fontface, 0, 24);
 
     //SDL Setup
 
@@ -511,6 +506,8 @@ int main (void)
     SDL_DestroyWindow(window);
     SDL_Quit();
     free(pixels);
+
+    FT_Done_FreeType(ft_library);
 
     return 0;
 }
