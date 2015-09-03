@@ -235,11 +235,6 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos,
                 addToDynamicArray_char(output_buffer, current_insert.content[pos]);
                 addToDynamicArray_ulong(ID_table, current_insert.selfID);
                 addToDynamicArray_ulong(charPos_table, pos);
-                //int length = get_string_length(output_buffer);
-                //output_buffer = realloc(output_buffer, length+2);
-                //output_buffer[length] = current_insert.content[pos];
-                //output_buffer[length+1] = 0;
-                //printf("%c", current_insert.content[pos]);
             }
         }
 
@@ -247,7 +242,6 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos,
     }
 
     free(IDs.array);
-    //return output_buffer;
 }
 
 
@@ -433,46 +427,6 @@ int main (void)
                 {
                     switch (e.key.keysym.sym)
                     {
-                //        case SDLK_a:
-                //        {
-                //            insert_letter(&buffer, &set, &ID_table, 1);
-                //        } break;
-                //        
-                //        case SDLK_b:
-                //        {
-                //            insert_letter(&buffer, &set, &ID_table, 2);
-                //        } break;
-
-                //        case SDLK_c:
-                //        {
-                //            insert_letter(&buffer, &set, &ID_table, 3);
-                //        } break;
-
-                //        case SDLK_d:
-                //        {
-                //            insert_letter(&buffer, &set, &ID_table, 4);
-                //        } break;
-
-                //        case SDLK_e:
-                //        {
-                //            insert_letter(&buffer, &set, &ID_table, 5);
-                //        } break;
-
-                //        case SDLK_f:
-                //        {
-                //            insert_letter(&buffer, &set, &ID_table, 6);
-                //        } break;
-
-                //        case SDLK_s:
-                //        {
-                //            insert_letter(&buffer, &set, &ID_table, 7);
-                //        } break;
-
-                //        case SDLK_SPACE:
-                //        {
-                //            insert_letter(&buffer, &set, &ID_table, 8);
-                //        } break;
-
                         case SDLK_RETURN:
                         {
                             insert_letter(&buffer, &set, &ID_table, &charPos_table, 10);
@@ -519,7 +473,7 @@ int main (void)
                     charPos_table.used_length = 0;
                     render_text(&set, 0, 0, &output_buffer, &ID_table, &charPos_table);
                     addToDynamicArray_char(&output_buffer, 0);
-                    printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
+                    //printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
 
                 } break;
 
