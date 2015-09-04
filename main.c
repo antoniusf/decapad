@@ -60,16 +60,9 @@ string_concat (char **buffer1, char **buffer2) //result will be in buffer1, both
 void
 draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint32 *pixels, char show_cursor, FT_Face fontface)
 {
-    unsigned short inverted_pos = buffer->cursor + 1; //NOTE(tony): what if the buffer is too long?
-    if (!show_cursor)
-    {
-        inverted_pos = 0;
-    }
     char character;
-    char *data;
-    int i;
     char *index = text;
-    char *inverted_char = text+inverted_pos;
+    char *char_after_cursor = text+buffer->cursor;
     unsigned int zero_x = x;
     int error;
     int height = (int) fontface->size->metrics.height / 64;
@@ -118,7 +111,7 @@ draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint3
                 }
             }
 
-            if ( index == inverted_char )
+            if ( index-1 == char_after_cursor ) //index-1 to compensate for the index++ in the for head
             {
                 int i;
                 for ( i=0; i<height; i++ )
@@ -128,6 +121,15 @@ draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint3
             }
 
             x += fontface->glyph->advance.x >> 6;
+        }
+    }
+
+    if ( index-1 == char_after_cursor )
+    {
+        int i;
+        for ( i=0; i<height; i++ )
+        {
+            SETPIXEL(x, y-i+height/8, 0xFFFFFFFF);
         }
     }
 }
@@ -438,11 +440,11 @@ int main (void)
 
                         case SDLK_RIGHT:
                         {
-                            //if (buffer.cursor < buffer.length-1)
-                            //{
+                            if (buffer.cursor < output_buffer.used_length-1)
+                            {
                                 buffer.cursor++;
                                 buffer.activeInsertID = 0;
-                            //}
+                            }
                         } break;
 
                         case SDLK_LEFT:
