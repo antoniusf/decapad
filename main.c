@@ -268,14 +268,14 @@ insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_ta
         else
         {
             insert_ID = ID_table->array[pos-1];
-            charPos = charPos_table->array[pos-1];
+            charPos = charPos_table->array[pos-1] + 1;
         }
 
 
         TextInsert new_insert;
         new_insert.selfID = set->used_length + 1;
         new_insert.parentID = insert_ID;
-        new_insert.charPos = charPos+1;
+        new_insert.charPos = charPos;
         new_insert.lock = 0;
         new_insert.length = 1;
         new_insert.content = malloc(1);
@@ -366,17 +366,17 @@ int main (void)
     //Logic
     TextInsertSet set;
     initTextInsertSet(&set);
-    {
-        TextInsert start_insert;
-        start_insert.parentID = 0;
-        start_insert.selfID = 1;
-        start_insert.charPos = 0;
-        start_insert.lock = 0;
-        start_insert.length = 1;
-        start_insert.content = malloc(1);
-        start_insert.content[0] = 65; //<- WHEN DEBUGGING, WATCH THIS!!!
-        addToTextInsertSet(&set, start_insert);
-    }
+    //{
+    //    TextInsert start_insert;
+    //    start_insert.parentID = 0;
+    //    start_insert.selfID = 1;
+    //    start_insert.charPos = 0;
+    //    start_insert.lock = 0;
+    //    start_insert.length = 1;
+    //    start_insert.content = malloc(1);
+    //    start_insert.content[0] = 65; //<- WHEN DEBUGGING, WATCH THIS!!!
+    //    addToTextInsertSet(&set, start_insert);
+    //}
 
 
     DynamicArray_char output_buffer;
@@ -478,7 +478,7 @@ int main (void)
                     charPos_table.used_length = 0;
                     render_text(&set, 0, 0, &output_buffer, &ID_table, &charPos_table);
                     addToDynamicArray_char(&output_buffer, 0);
-                    //printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
+                    printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
 
                 } break;
 
