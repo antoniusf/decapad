@@ -189,7 +189,7 @@ getInsertByID (TextInsertSet *set, unsigned long selfID)
 }
 
 void
-render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos, DynamicArray_char *output_buffer, DynamicArray_ulong *ID_table, DynamicArray_ulong *charPos_table)//output_buffer needs to be initialized; ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character. TODO: this is terribly inefficient with memory. fix sometime.
+render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos, DynamicArray_char *output_buffer, DynamicArray_ulong *ID_table, DynamicArray_ulong *charPos_table)//output_buffer needs to be initialized; ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character, charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
 {
     unsigned int i;
     TextInsert current_insert;
@@ -258,16 +258,24 @@ insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_ta
     {
 
         unsigned short pos = buffer->cursor;
-        unsigned long insert_ID = ID_table->array[pos];
-
-        unsigned short charPos = 0;
-        charPos = charPos_table->array[pos];
+        unsigned long insert_ID;
+        unsigned short charPos;
+        if ( pos == 0 )
+        {
+            insert_ID = 0;
+            charPos = 0;
+        }
+        else
+        {
+            insert_ID = ID_table->array[pos-1];
+            charPos = charPos_table->array[pos-1];
+        }
 
 
         TextInsert new_insert;
         new_insert.selfID = set->used_length + 1;
         new_insert.parentID = insert_ID;
-        new_insert.charPos = charPos;
+        new_insert.charPos = charPos+1;
         new_insert.lock = 0;
         new_insert.length = 1;
         new_insert.content = malloc(1);
