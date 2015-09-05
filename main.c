@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <SDL2/SDL.h>
@@ -309,10 +311,40 @@ delete_letter ( TextInsertSet *set, DynamicArray_ulong *ID_table, DynamicArray_u
 int main (void)
 {
 
-    //Freetype Setup
-
-
     int error;
+
+    //fifo setup
+    int read_channel;
+
+    error = mkfifo( "/tmp/deca_channel_1", 770 );
+    if (error == -1)
+    {
+        if ( errno == EEXIST )
+        {
+            //read channel is channel 2
+            error = mkfifo( "/tmp/deca_channel_2", 770 );
+            read_channel = 2;
+
+            if ( error == -1 )
+            {
+                printf("FIFO creation failed.\n");
+                return 1;
+            }
+        }
+
+        else
+        {
+            printf("FIFO creation failed.\n");
+            return 1;
+        }
+    }
+
+    else
+    {
+        read_channel = 1;
+    }
+    
+    //Freetype setup
     
     FT_Library ft_library;
     error = FT_Init_FreeType( &ft_library);
@@ -332,7 +364,7 @@ int main (void)
 
     error = FT_Set_Pixel_Sizes(fontface, 0, 24);
 
-    //SDL Setup
+    //SDL setup
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         printf("SDL initialization failed: %s", SDL_GetError());
@@ -518,6 +550,16 @@ int main (void)
     free(pixels);
 
     FT_Done_FreeType(ft_library);
+
+    if ( read_channel == 1)
+    {
+        remove( "/tmp/deca_channel_1" );
+    }
+
+    else
+    {
+        remove( "/tmp/deca_channel_2" );
+    }
 
     return 0;
 }
