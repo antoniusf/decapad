@@ -59,6 +59,129 @@ string_concat (char **buffer1, char **buffer2) //result will be in buffer1, both
     return;
 }
 
+Uint8
+crc8_0x97 ( Uint8 *data, size_t length )
+//Implemented following http://www.ross.net/crc/download/crc_v3.txt
+//NOTE: switch to 0xA6 for bit lengths > 119 (polynomial data from http://ieeexplore.ieee.org/xpls/icp.jsp?arnumber=1311885#table3 )
+{
+    Uint8 crc_table[256];
+    Uint8 poly = 0x97; //actually, we will read in 0x97 as the reversed reciprocal polynomial of what it actually is, but this will have no effect on error correction strength (https://en.wikipedia.org/wiki/Mathematics_of_cyclic_redundancy_checks#Reciprocal_polynomials)
+
+
+    int i, j;
+    for (i=0; i<256; i++)
+    {
+        Uint8 indexbyte = i;
+        for (j=0; j<8; j++)
+        {
+            if ( (indexbyte >> 7) == 1 )
+            {
+                indexbyte <<= 1;
+                indexbyte ^= poly;
+            }
+            else
+            {
+                indexbyte <<= 1;
+            }
+        }
+        crc_table[i] = indexbyte;
+    }
+
+    Uint8 result = 0xFF;
+    size_t k;
+    for (k=0; k<length; k++)
+    {
+        result = crc_table[data[k] ^ result];
+    }
+
+    /* even more unreadable alternative
+    while ( length-- > 0)
+    {
+        result = crc_table[(*data++)^result];
+    }*/
+
+    return result;
+}
+
+char
+check_crc8_0x97 ( Uint8 *data, size_t length ) //checksum must be appended to data
+{
+    Uint8 crc_value = crc8_0x97(data, length);
+    if ( crc_value == 0 )
+    {
+        return 0;
+    }
+    else
+    {
+        return -1;
+    }
+}
+
+void
+base85_enc_uint32 ( Uint32 input, DynamicArray_char *output )
+{
+    addToDynamicArray_char( output, 42 + ( input % 85 ) );
+    input /= 85;
+
+    addToDynamicArray_char( output, 42 + ( input % 85 ) );
+    input /= 85;
+
+    addToDynamicArray_char( output, 42 + ( input % 85 ) );
+    input /= 85;
+
+    addToDynamicArray_char( output, 42 + ( input % 85 ) );
+    input /= 85;
+
+    addToDynamicArray_char( output, 42 + ( input % 85 ) );
+
+}
+
+Uint32
+base85_dec_uint32 ( char *input )
+{
+    Uint32 decoded = 0;
+
+    decoded += input[4] - 42;
+    decoded *= 85;
+    
+    decoded += input[3] - 42;
+    decoded *= 85;
+
+    decoded += input[2] - 42;
+    decoded *= 85;
+
+    decoded += input[1] - 42;
+    decoded *= 85;
+
+    decoded += input[0] - 42;
+
+    return decoded;
+}
+
+void
+serialize_insert ( TextInsert *insert, DynamicArray_char *output )
+{
+    addToDynamicArray_char( output, 73 );// I for insert
+    base85_enc_uint32( insert->selfID, output );
+    base85_enc_uint32( insert->parentID, output );
+    base85_enc_uint32( (insert->charPos << 16) + insert->length + (insert->lock << 31), output );
+    int i;
+    for (i=0; i < insert->length; i++)
+    {
+        addToDynamicArray_char( output, (insert->content)[i] );
+    }
+}
+
+void serialize_document ( TextInsertSet *set, DynamicArray_char *output )
+{
+    int i;
+    for (i=0; i < set->used_length; i++)
+    {
+        serialize_insert( (set->array) + i, output );
+    }
+}
+
+
 void
 draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint32 *pixels, char show_cursor, FT_Face fontface)
 {
@@ -313,6 +436,15 @@ int main (void)
 
     int error;
 
+    //CRC test
+    {
+        size_t length = 2;
+        char testdata[3] = "ab";
+        Uint8 crc_value = crc8_0x97( (Uint8 *) testdata, 2 );
+        testdata[2] = crc_value;
+        printf("success: %i, CRC: %i\n", check_crc8_0x97(testdata, 3), crc_value);
+    }
+
     //fifo setup
     int read_channel;
 
@@ -544,6 +676,13 @@ int main (void)
         blink_timer+=9;
         SDL_Delay(30);
     }
+
+    //insert serialization test
+    DynamicArray_char serial_output;
+    initDynamicArray_char( &serial_output );
+    serialize_document( &set, &serial_output );
+    addToDynamicArray_char( &serial_output, 0 );
+    printf("serialized document: %s\n", serial_output.array );
 
     SDL_DestroyWindow(window);
     SDL_Quit();
