@@ -236,7 +236,7 @@ draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint3
                 }
             }
 
-            if ( index-1 == char_after_cursor ) //index-1 to compensate for the index++ in the for head
+            if ( show_cursor == 1 && index-1 == char_after_cursor ) //index-1 to compensate for the index++ in the for head
             {
                 int i;
                 for ( i=0; i<height; i++ )
@@ -249,7 +249,7 @@ draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint3
         }
     }
 
-    if ( index-1 == char_after_cursor )
+    if ( show_cursor == 1 && index-1 == char_after_cursor )
     {
         int i;
         for ( i=0; i<height; i++ )
