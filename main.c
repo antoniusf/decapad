@@ -161,6 +161,7 @@ base85_dec_uint32 ( char *input )
 void
 serialize_insert ( TextInsert *insert, DynamicArray_char *output )
 {
+    unsigned int start_length = output->used_length;
     addToDynamicArray_char( output, 73 );// I for insert
     base85_enc_uint32( insert->selfID, output );
     base85_enc_uint32( insert->parentID, output );
@@ -170,6 +171,52 @@ serialize_insert ( TextInsert *insert, DynamicArray_char *output )
     {
         addToDynamicArray_char( output, (insert->content)[i] );
     }
+    Uint8 crc_value = crc8_0x97( output->array+start_length, output->used_length - start_length );
+    addToDynamicArray_char(output, (crc_value>>4) + 65);
+    addToDynamicArray_char(output, (crc_value&0x0F) + 65);
+    printf("serialize crc: %i\n", crc_value);
+}
+
+int
+unserialize_insert ( TextInsertSet *set, char *string, size_t length )
+{
+    Uint32 mix = base85_dec_uint32( string+1+5+5 );
+    int insert_content_length = mix&0xFFFF;
+    size_t total_length = 1+5+5+5+insert_content_length+2;
+
+    if (total_length > length)
+    {
+        printf("Insert unserialization failed: invalid length.\n");
+        return -1;
+    }
+
+    Uint8 checksum = ( (string[total_length-2] - 65) << 4) + (string[total_length-1] - 65);
+    printf("unserialize crc: %i\n", checksum);
+    string[total_length-2] = checksum;
+    if ( check_crc8_0x97( string, total_length-1 ) == -1 )
+    {
+        printf("Insert unserialization failed: invalid checksum.\n");
+        return -1;
+    }
+
+    TextInsert insert;
+
+    insert.selfID = base85_dec_uint32( string+1 );
+
+    insert.parentID = base85_dec_uint32( string+1+5 );
+
+    insert.charPos = (mix>>16)&0xFFFF;
+    insert.length = insert_content_length;
+    insert.lock = (mix>>31)&1;
+
+    insert.content = malloc(insert.length);
+    int i;
+    for (i=0; i<insert.length; i++)
+    {
+        insert.content[i] = string[i+1+5+5+5];
+    }
+    addToTextInsertSet(set, insert);
+    return 0;
 }
 
 void serialize_document ( TextInsertSet *set, DynamicArray_char *output )
@@ -406,7 +453,13 @@ insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_ta
         new_insert.content = malloc(1);
         new_insert.content[0] = letter;
 
-        addToTextInsertSet(set, new_insert);
+        //serialization TEST
+        DynamicArray_char serial;
+        initDynamicArray_char( &serial);
+        serialize_insert(&new_insert, &serial);
+        unserialize_insert(set, serial.array, serial.used_length);
+
+        //addToTextInsertSet(set, new_insert);
         buffer->activeInsertID = new_insert.selfID;
 
     }
@@ -435,15 +488,6 @@ int main (void)
 {
 
     int error;
-
-    //CRC test
-    {
-        size_t length = 2;
-        char testdata[3] = "ab";
-        Uint8 crc_value = crc8_0x97( (Uint8 *) testdata, 2 );
-        testdata[2] = crc_value;
-        printf("success: %i, CRC: %i\n", check_crc8_0x97(testdata, 3), crc_value);
-    }
 
     //fifo setup
     int read_channel;
