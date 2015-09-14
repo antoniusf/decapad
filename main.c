@@ -178,13 +178,13 @@ serialize_insert ( TextInsert *insert, DynamicArray_char *output )
 }
 
 int
-unserialize_insert ( TextInsertSet *set, char *string, size_t length )
+unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t *return_insert_length)
 {
     Uint32 mix = base85_dec_uint32( string+1+5+5 );
     int insert_content_length = mix&0xFFFF;
     size_t total_length = 1+5+5+5+insert_content_length+2;
 
-    if (total_length > length)
+    if (total_length > maxlength)
     {
         printf("Insert unserialization failed: invalid length.\n");
         return -1;
@@ -216,10 +216,13 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t length )
         insert.content[i] = string[i+1+5+5+5];
     }
     addToTextInsertSet(set, insert);
+    
+    *return_insert_length = total_length;
     return 0;
 }
 
-void serialize_document ( TextInsertSet *set, DynamicArray_char *output )
+void
+serialize_document ( TextInsertSet *set, DynamicArray_char *output )
 {
     int i;
     for (i=0; i < set->used_length; i++)
@@ -228,6 +231,21 @@ void serialize_document ( TextInsertSet *set, DynamicArray_char *output )
     }
 }
 
+int
+unserialize_document ( TextInsertSet *set, char *string, size_t length )
+{
+    size_t insert_length;
+    while ( length > 0 )
+    {
+        if ( unserialize_insert( set, string, length, &insert_length ) == -1 )
+        {
+            return -1;
+        }
+        string += insert_length;
+        length -= insert_length;
+    }
+    return 0;
+}
 
 void
 draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint32 *pixels, char show_cursor, FT_Face fontface)
@@ -453,13 +471,7 @@ insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_ta
         new_insert.content = malloc(1);
         new_insert.content[0] = letter;
 
-        //serialization TEST
-        DynamicArray_char serial;
-        initDynamicArray_char( &serial);
-        serialize_insert(&new_insert, &serial);
-        unserialize_insert(set, serial.array, serial.used_length);
-
-        //addToTextInsertSet(set, new_insert);
+        addToTextInsertSet(set, new_insert);
         buffer->activeInsertID = new_insert.selfID;
 
     }
@@ -687,6 +699,15 @@ int main (void)
                     render_text(&set, 0, 0, &output_buffer, &ID_table, &charPos_table);
                     addToDynamicArray_char(&output_buffer, 0);
                     printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
+
+                    //serialization TEST 2
+                    {
+                        DynamicArray_char serial;
+                        initDynamicArray_char(&serial);
+                        serialize_document(&set, &serial);
+                        initTextInsertSet(&set);
+                        unserialize_document(&set, serial.array, serial.used_length);
+                    }
 
                 } break;
 
