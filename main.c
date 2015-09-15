@@ -59,6 +59,20 @@ string_concat (char **buffer1, char **buffer2) //result will be in buffer1, both
     return;
 }
 
+long //so we can have all the unsigned ints *and* return -1 on not finding an insert
+getInsertByID (TextInsertSet *set, unsigned long selfID)
+{
+    unsigned int i;
+    for (i=0; i<set->used_length; i++)
+    {
+        if ((set->array)[i].selfID == selfID)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
 Uint8
 crc8_0x97 ( Uint8 *data, size_t length )
 //Implemented following http://www.ross.net/crc/download/crc_v3.txt
@@ -215,7 +229,16 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t 
     {
         insert.content[i] = string[i+1+5+5+5];
     }
-    addToTextInsertSet(set, insert);
+
+    long find_insert = getInsertByID(set, insert.selfID);
+    if (find_insert != -1)
+    {
+        (set->array)[find_insert] = insert;
+    }
+    else
+    {
+        addToTextInsertSet(set, insert);
+    }
     
     *return_insert_length = total_length;
     return 0;
@@ -364,19 +387,6 @@ quicksort (unsigned long *array, unsigned long min, unsigned long max)
     }
 }
 
-long //so we can have all the unsigned ints *and* return -1 on not finding an insert
-getInsertByID (TextInsertSet *set, unsigned long selfID)
-{
-    unsigned int i;
-    for (i=0; i<set->used_length; i++)
-    {
-        if ((set->array)[i].selfID == selfID)
-        {
-            return i;
-        }
-    }
-    return -1;
-}
 
 void
 render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos, DynamicArray_char *output_buffer, DynamicArray_ulong *ID_table, DynamicArray_ulong *charPos_table)//output_buffer needs to be initialized; ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character, charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
@@ -699,15 +709,6 @@ int main (void)
                     render_text(&set, 0, 0, &output_buffer, &ID_table, &charPos_table);
                     addToDynamicArray_char(&output_buffer, 0);
                     printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
-
-                    //serialization TEST 2
-                    {
-                        DynamicArray_char serial;
-                        initDynamicArray_char(&serial);
-                        serialize_document(&set, &serial);
-                        initTextInsertSet(&set);
-                        unserialize_document(&set, serial.array, serial.used_length);
-                    }
 
                 } break;
 
