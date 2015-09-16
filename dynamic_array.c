@@ -95,6 +95,21 @@ addToDynamicArray_char ( DynamicArray_char *array, char item )
 }
 
 int
+addStringToDynamicArray_char ( DynamicArray_char *array, char *string )
+{
+    int i = 0;
+    while ( string[i] )
+    {
+        if ( addToDynamicArray_char(array, string[i]) < 0 )
+        {
+            return -1;
+        }
+        i++;
+    }
+    return 0;
+}
+
+int
 concatDynamicArrays_char ( DynamicArray_char *array1, DynamicArray_char *array2 ) //result will be in array1
 {
     unsigned int new_length = array1->used_length + array2->used_length;

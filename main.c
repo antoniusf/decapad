@@ -1,3 +1,7 @@
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -13,6 +17,8 @@
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 400
 
+Uint64 ID_start;
+Uint64 ID_end;
 
 //one character is 8x6; start in the top left corner, then scan vertically
 const char characters[] = {
@@ -57,6 +63,20 @@ string_concat (char **buffer1, char **buffer2) //result will be in buffer1, both
         *(*buffer1+length1+i) = *(*buffer2+i);
     }
     return;
+}
+
+int
+string_compare (char *buffer1, char *buffer2, int length)
+{
+    int i;
+    for (i=0; i<length; i++)
+    {
+        if (buffer1[i] != buffer2[i])
+        {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 long //so we can have all the unsigned ints *and* return -1 on not finding an insert
@@ -188,7 +208,7 @@ serialize_insert ( TextInsert *insert, DynamicArray_char *output )
     Uint8 crc_value = crc8_0x97( output->array+start_length, output->used_length - start_length );
     addToDynamicArray_char(output, (crc_value>>4) + 65);
     addToDynamicArray_char(output, (crc_value&0x0F) + 65);
-    printf("serialize crc: %i\n", crc_value);
+    //printf("serialize crc: %i\n", crc_value);
 }
 
 int
@@ -205,7 +225,7 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t 
     }
 
     Uint8 checksum = ( (string[total_length-2] - 65) << 4) + (string[total_length-1] - 65);
-    printf("unserialize crc: %i\n", checksum);
+    //printf("unserialize crc: %i\n", checksum);
     string[total_length-2] = checksum;
     if ( check_crc8_0x97( string, total_length-1 ) == -1 )
     {
@@ -241,6 +261,32 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t 
     }
     
     *return_insert_length = total_length;
+    return 0;
+}
+
+int
+send_insert ( TextInsert *insert, int write_fifo )
+{
+    DynamicArray_char message, messagelength;
+    initDynamicArray_char(&message);
+    initDynamicArray_char(&messagelength);
+
+    addStringToDynamicArray_char(&message, "*****data");
+    serialize_insert(insert, &message);
+    base85_enc_uint32(message.used_length-5, &messagelength);
+
+    //copy length into the message
+    int i;
+    for (i=0; i<5; i++)
+    {
+        message.array[i] = messagelength.array[i];
+    }
+
+    if (write(write_fifo, message.array, message.used_length) < 0)
+    {
+        printf("Sending insert failed.\n");
+        return -1;
+    }
     return 0;
 }
 
@@ -441,9 +487,20 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos,
     free(IDs.array);
 }
 
+void
+update_buffer (TextInsertSet *set, DynamicArray_char *output_buffer, DynamicArray_ulong *ID_table, DynamicArray_ulong *charPos_table)
+{
+    //update buffer
+    output_buffer->used_length = 0;
+    ID_table->used_length = 0;
+    charPos_table->used_length = 0;
+    render_text(set, 0, 0, output_buffer, ID_table, charPos_table);
+    addToDynamicArray_char(output_buffer, 0);
+}
+
 
 int
-insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_table, DynamicArray_ulong *charPos_table, char letter)
+insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_table, DynamicArray_ulong *charPos_table, char letter, int write_fifo)
 {
 
     if (buffer->activeInsertID)
@@ -452,6 +509,8 @@ insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_ta
         insert->content = realloc(insert->content, insert->length+1);
         insert->content[insert->length] = letter;
         insert->length++;
+
+        send_insert(insert, write_fifo);
     }
 
     else
@@ -473,7 +532,12 @@ insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_ta
 
 
         TextInsert new_insert;
-        new_insert.selfID = set->used_length + 1;
+        new_insert.selfID = ID_start++;
+        if (ID_end < ID_start)
+        {
+            printf("Ran out of IDs!!!\n");
+            exit(1);
+        }
         new_insert.parentID = insert_ID;
         new_insert.charPos = charPos;
         new_insert.lock = 0;
@@ -483,6 +547,8 @@ insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_ta
 
         addToTextInsertSet(set, new_insert);
         buffer->activeInsertID = new_insert.selfID;
+        
+        send_insert(&new_insert, write_fifo);
 
     }
 
@@ -491,7 +557,7 @@ insert_letter (TextBuffer *buffer, TextInsertSet *set, DynamicArray_ulong *ID_ta
 }
 
 int
-delete_letter ( TextInsertSet *set, DynamicArray_ulong *ID_table, DynamicArray_ulong *charPos_table, unsigned short pos )
+delete_letter ( TextInsertSet *set, DynamicArray_ulong *ID_table, DynamicArray_ulong *charPos_table, unsigned short pos, int write_fifo )
 {
     if (pos < ID_table->used_length)
     {
@@ -501,10 +567,11 @@ delete_letter ( TextInsertSet *set, DynamicArray_ulong *ID_table, DynamicArray_u
 
         TextInsert *insert = set->array + getInsertByID(set, insert_ID);
         insert->content[inner_pos] = 127;
+
+        send_insert(insert, write_fifo);
     }
     return 0;
 }
-
 
 int main (void)
 {
@@ -512,15 +579,16 @@ int main (void)
     int error;
 
     //fifo setup
-    int read_channel;
+    int read_channel, read_fifo, write_fifo;
+    write_fifo = -1;
 
-    error = mkfifo( "/tmp/deca_channel_1", 770 );
+    error = mkfifo( "/tmp/deca_channel_1", 0777 );
     if (error == -1)
     {
         if ( errno == EEXIST )
         {
             //read channel is channel 2
-            error = mkfifo( "/tmp/deca_channel_2", 770 );
+            error = mkfifo( "/tmp/deca_channel_2", 0777 );
             read_channel = 2;
 
             if ( error == -1 )
@@ -528,6 +596,10 @@ int main (void)
                 printf("FIFO creation failed.\n");
                 return 1;
             }
+
+            write_fifo = open("/tmp/deca_channel_1", O_WRONLY);
+            write(write_fifo, ".****Init", 9);
+            read_fifo = open("/tmp/deca_channel_2", O_RDONLY | O_NONBLOCK);
         }
 
         else
@@ -540,6 +612,7 @@ int main (void)
     else
     {
         read_channel = 1;
+        read_fifo = open("/tmp/deca_channel_1", O_RDONLY | O_NONBLOCK);
     }
     
     //Freetype setup
@@ -561,6 +634,17 @@ int main (void)
     }
 
     error = FT_Set_Pixel_Sizes(fontface, 0, 24);
+
+    if (read_channel == 1)
+    {
+        ID_start = 1;
+        ID_end = 1024;
+    }
+    else
+    {
+        ID_start = 1025;
+        ID_end = 2048;
+    }
 
     //SDL setup
 
@@ -647,15 +731,10 @@ int main (void)
 
                 case SDL_TEXTINPUT:
                 {
-                    insert_letter(&buffer, &set, &ID_table, &charPos_table, e.text.text[0]);
+                    insert_letter(&buffer, &set, &ID_table, &charPos_table, e.text.text[0], write_fifo);
                     blink_timer = 0;
 
-                    //update buffer
-                    output_buffer.used_length = 0;
-                    ID_table.used_length = 0;
-                    charPos_table.used_length = 0;
-                    render_text(&set, 0, 0, &output_buffer, &ID_table, &charPos_table);
-                    addToDynamicArray_char(&output_buffer, 0);
+                    update_buffer(&set, &output_buffer, &ID_table, &charPos_table);
                 } break;
 
                 case SDL_KEYDOWN:
@@ -664,7 +743,7 @@ int main (void)
                     {
                         case SDLK_RETURN:
                         {
-                            insert_letter(&buffer, &set, &ID_table, &charPos_table, 10);
+                            insert_letter(&buffer, &set, &ID_table, &charPos_table, 10, write_fifo);
                         } break;
 
                         case SDLK_BACKSPACE:
@@ -672,7 +751,7 @@ int main (void)
                             if (buffer.cursor > 0)
                             {
                                 buffer.cursor--;
-                                delete_letter (&set, &ID_table, &charPos_table, buffer.cursor);
+                                delete_letter (&set, &ID_table, &charPos_table, buffer.cursor, write_fifo);
                             }
                         } break;
 
@@ -708,7 +787,7 @@ int main (void)
                     charPos_table.used_length = 0;
                     render_text(&set, 0, 0, &output_buffer, &ID_table, &charPos_table);
                     addToDynamicArray_char(&output_buffer, 0);
-                    printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
+                    //printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
 
                 } break;
 
@@ -741,14 +820,34 @@ int main (void)
         
         blink_timer+=9;
         SDL_Delay(30);
+
+        //check FIFO
+        {
+            char *base85_length = malloc(5);
+            if (read(read_fifo, base85_length, 5) == 5)
+            {
+                Uint32 length = base85_dec_uint32(base85_length);
+                printf("received message of length %i\n", length);
+                char *input = malloc(length);
+                read(read_fifo, input, length);
+                if (string_compare(input, "Init", 4) && write_fifo < 0)
+                {
+                    write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
+                }
+                else if (string_compare(input, "data", 4))
+                {
+                    unserialize_document(&set, input+4, length-4);
+                    update_buffer(&set, &output_buffer, &ID_table, &charPos_table);
+                }
+                free(input);
+            }
+        }
     }
 
     //insert serialization test
     DynamicArray_char serial_output;
     initDynamicArray_char( &serial_output );
     serialize_document( &set, &serial_output );
-    addToDynamicArray_char( &serial_output, 0 );
-    printf("serialized document: %s\n", serial_output.array );
 
     SDL_DestroyWindow(window);
     SDL_Quit();

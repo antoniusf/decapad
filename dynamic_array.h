@@ -31,6 +31,9 @@ int
 addToDynamicArray_char ( DynamicArray_char *array, char item );
 
 int
+addStringToDynamicArray_char ( DynamicArray_char *array, char *string );
+
+int
 concatDynamicArrays_char ( DynamicArray_char *array1, DynamicArray_char *array2 ); //result will be in array1
 
 #ifdef MAIN_H
