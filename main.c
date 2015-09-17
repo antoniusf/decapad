@@ -844,9 +844,22 @@ int main (void)
         }
     }
 
+    SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
     free(pixels);
+
+    free(buffer.text.array);
+    free(buffer.ID_table.array);
+    free(buffer.charPos_table.array);
+
+    int i;
+    for (i=0; i<set.used_length; i++)
+    {
+        free( set.array[i].content );
+    }
+
+    free(set.array);
 
     FT_Done_FreeType(ft_library);
 
