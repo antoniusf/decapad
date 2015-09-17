@@ -201,15 +201,20 @@ void
 serialize_insert ( TextInsert *insert, DynamicArray_char *output )
 {
     unsigned int start_length = output->used_length;
+
     addToDynamicArray_char( output, 73 );// I for insert
+
     base85_enc_uint32( insert->selfID, output );
     base85_enc_uint32( insert->parentID, output );
     base85_enc_uint32( (insert->charPos << 16) + insert->length + (insert->lock << 31), output );
+
+    //copy over the text
     int i;
     for (i=0; i < insert->length; i++)
     {
         addToDynamicArray_char( output, (insert->content)[i] );
     }
+
     Uint8 crc_value = crc8_0x97( output->array+start_length, output->used_length - start_length );
     addToDynamicArray_char(output, (crc_value>>4) + 65);
     addToDynamicArray_char(output, (crc_value&0x0F) + 65);
@@ -580,10 +585,10 @@ delete_letter ( TextInsertSet *set, TextBuffer *buffer, int write_fifo )
 int main (void)
 {
 
+    int error;
+
     //CRC table computation
     crc8_0x97_fill_table();
-
-    int error;
 
     //fifo setup
     int read_channel, read_fifo, write_fifo;
@@ -772,12 +777,7 @@ int main (void)
 
                     blink_timer = 0;
 
-                    //update buffer
-                    buffer.text.used_length = 0;
-                    buffer.ID_table.used_length = 0;
-                    buffer.charPos_table.used_length = 0;
-                    render_text(&set, 0, 0, &buffer);
-                    addToDynamicArray_char(&buffer.text, 0);
+                    update_buffer(&set, &buffer);
                     //printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
 
                 } break;
