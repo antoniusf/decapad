@@ -3,14 +3,6 @@
 
 typedef unsigned long insertID;
 
-struct TextBuffer
-{
-    unsigned short cursor;
-    insertID activeInsertID;
-
-};
-typedef struct TextBuffer TextBuffer;
-
 struct TextInsert
 {
     unsigned long selfID;
