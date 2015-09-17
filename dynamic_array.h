@@ -56,4 +56,17 @@ concatTextInsertSets ( TextInsertSet *array1, TextInsertSet *array2 ); //result 
 
 #endif
 
+typedef struct DynamicArray_pointer
+{
+    void **array;
+    unsigned int used_length;
+    unsigned int allocated_length;
+} DynamicArray_pointer;
+
+int
+initDynamicArray_pointer ( DynamicArray_pointer *array );
+
+int
+add_pointer ( DynamicArray_pointer *array, void *item );
+
 #endif

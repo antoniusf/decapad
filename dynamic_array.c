@@ -190,3 +190,37 @@ concatTextInsertSets ( TextInsertSet *array1, TextInsertSet *array2 ) //result w
 }
 
 #endif
+
+//void *
+
+int
+initDynamicArray_pointer ( DynamicArray_pointer *array )
+{
+    array->used_length = 0;
+    array->array = malloc(4*sizeof(void *));
+    if (!array->array)
+    {
+        printf("Error in initDynamicArray_pointer: malloc didn't work.\n");
+        return -1;
+    }
+    array->allocated_length = 4;
+    return 0;
+}
+
+int
+add_pointer ( DynamicArray_pointer *array, void *item )
+{
+    if (array->used_length == array->allocated_length)
+    {
+        array->array = realloc(array->array, (array->allocated_length)*2*sizeof(void *));
+        if ( array->array == NULL )
+        {
+            printf("Error in addToDynamicArray_pointer: realloc didn't work.\n");
+            return -1;
+        }
+        array->allocated_length *= 2;
+    }
+    array->array[array->used_length] = item;
+    array->used_length++;
+    return 0;
+}

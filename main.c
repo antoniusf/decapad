@@ -297,6 +297,9 @@ send_insert ( TextInsert *insert, int write_fifo )
         printf("Sending insert failed.\n");
         return -1;
     }
+
+    free(message.array);
+    free(messagelength.array);
     return 0;
 }
 
@@ -837,6 +840,7 @@ int main (void)
 
                 free(input);
             }
+            free(base85_length);
         }
     }
 
