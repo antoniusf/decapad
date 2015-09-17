@@ -13,24 +13,14 @@
 
 #define SETPIXEL(x, y, value) ( *(pixels+(x)+(y)*WINDOW_WIDTH) = (value) )
 
-//TODO(tony): find a better way for this
+//TODO: find a better way for this
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 400
 
 Uint64 ID_start;
 Uint64 ID_end;
 
-//one character is 8x6; start in the top left corner, then scan vertically
-const char characters[] = {
-    63, 72, 72, 72, 63, 0, //A
-    127, 73, 73, 73, 54, 0,//B
-    62, 65, 65, 65, 65, 0,//C
-    127, 65, 65, 65, 62, 0,//D
-    127, 73, 73, 73, 65, 0,//E
-    127, 72, 72, 72, 64, 0,//F
-    49, 73, 73, 73, 70, 0,//S (for typing ASDF)
-    0, 0, 0, 0, 0, 0, 0,//Space
-};
+Uint8 crc_0x97_table[256];
 
 unsigned int
 get_string_length (char *buffer) //*not* counting the 0 at the end
@@ -93,15 +83,11 @@ getInsertByID (TextInsertSet *set, unsigned long selfID)
     return -1;
 }
 
-Uint8
-crc8_0x97 ( Uint8 *data, size_t length )
-//Implemented following http://www.ross.net/crc/download/crc_v3.txt
-//NOTE: switch to 0xA6 for bit lengths > 119 (polynomial data from http://ieeexplore.ieee.org/xpls/icp.jsp?arnumber=1311885#table3 )
+void
+crc8_0x97_fill_table ( void )
 {
-    Uint8 crc_table[256];
     Uint8 poly = 0x97; //actually, we will read in 0x97 as the reversed reciprocal polynomial of what it actually is, but this will have no effect on error correction strength (https://en.wikipedia.org/wiki/Mathematics_of_cyclic_redundancy_checks#Reciprocal_polynomials)
-
-
+    
     int i, j;
     for (i=0; i<256; i++)
     {
@@ -118,20 +104,28 @@ crc8_0x97 ( Uint8 *data, size_t length )
                 indexbyte <<= 1;
             }
         }
-        crc_table[i] = indexbyte;
+        crc_0x97_table[i] = indexbyte;
     }
+}
+
+Uint8
+crc8_0x97 ( Uint8 *data, size_t length )
+//Implemented following http://www.ross.net/crc/download/crc_v3.txt
+//NOTE: switch to 0xA6 for bit lengths > 119 (polynomial data from http://ieeexplore.ieee.org/xpls/icp.jsp?arnumber=1311885#table3 )
+{
+
 
     Uint8 result = 0xFF;
     size_t k;
     for (k=0; k<length; k++)
     {
-        result = crc_table[data[k] ^ result];
+        result = crc_0x97_table[data[k] ^ result];
     }
 
     /* even more unreadable alternative
     while ( length-- > 0)
     {
-        result = crc_table[(*data++)^result];
+        result = crc_0x97_table[(*data++)^result];
     }*/
 
     return result;
@@ -576,6 +570,9 @@ delete_letter ( TextInsertSet *set, DynamicArray_ulong *ID_table, DynamicArray_u
 int main (void)
 {
 
+    //CRC table computation
+    crc8_0x97_fill_table();
+
     int error;
 
     //fifo setup
@@ -653,7 +650,7 @@ int main (void)
         return 1;
     }
 
-    SDL_Window *window = SDL_CreateWindow("congame 3d test", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
+    SDL_Window *window = SDL_CreateWindow("Decapad", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
     if (window == NULL) {
         SDL_Quit();
         printf("Window creation failed: %s", SDL_GetError());
