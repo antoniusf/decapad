@@ -615,8 +615,16 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, int write_fi
         unsigned short charPos;
         if ( pos == 0 )
         {
-            insert_ID = 0;
-            charPos = 0;
+            if (set->used_length == 0)
+            {
+                insert_ID = 0;
+                charPos = 0;
+            }
+            else
+            {
+                insert_ID = buffer->ID_table.array[pos];
+                charPos = buffer->charPos_table.array[pos];
+            }
         }
         else
         {
