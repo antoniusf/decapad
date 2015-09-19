@@ -260,11 +260,35 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t 
         insert.content[i] = string[i+1+5+5+5];
     }
 
-    long find_insert = getInsertByID(set, insert.selfID);
-    if (find_insert != -1)
+    long old_insert_pos = getInsertByID(set, insert.selfID);
+    if (old_insert_pos != -1)
     {
-        (set->array)[find_insert] = insert;
+        TextInsert *old_insert = (set->array)+old_insert_pos;
+        if ( insert.length >= old_insert->length ) //assume this is an update for now, actually we would need authenticity checking
+        {
+            int i;
+            for (i=0; i<(old_insert->length); i++)
+            {
+                if (old_insert->content[i] == 127)
+                {
+                    insert.content[i] = 127;
+                }
+            }
+            *old_insert = insert;
+        }
+        else
+        {
+            int i;
+            for (i=0; i<insert.length; i++)
+            {
+                if (insert.content[i] == 127)
+                {
+                    old_insert->content[i] = 127;
+                }
+            }
+        }
     }
+
     else
     {
         addToTextInsertSet(set, insert);
