@@ -979,6 +979,12 @@ int main (void)
                 free(input);
             }
             free(base85_length);
+
+            //check whether we have to take back the cursor after a deletion
+            if (buffer.cursor > buffer.text.used_length-1)//NOTE: if removing zero termination of buffer text, this -1 MUST be removed! (else, SEGFAULT....)
+            {
+                buffer.cursor = buffer.text.used_length-1;
+            }
         }
     }
 
