@@ -571,6 +571,27 @@ update_buffer (TextInsertSet *set, TextBuffer *buffer)
     addToDynamicArray_char(&buffer->text, 0);
 }
 
+int
+is_a_ancestor_of_b (TextInsertSet *set, TextInsert *a, TextInsert *b)
+{
+    if (b->parentID == a->selfID)
+    {
+        return 1;
+    }
+    else
+    {
+        if (b->parentID != 0)
+        {
+            long b_parent_pos = getInsertByID(set, b->parentID);
+            if (b_parent_pos > 0)
+            {
+                TextInsert *b_parent = (set->array)+b_parent_pos;
+                return is_a_ancestor_of_b(set, a, b_parent);
+            }
+        }
+    }
+    return 0;
+}
 
 int
 insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, int write_fifo)
@@ -599,8 +620,21 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, int write_fi
         }
         else
         {
-            insert_ID = buffer->ID_table.array[pos-1];
-            charPos = buffer->charPos_table.array[pos-1] + 1;
+            unsigned long insert_1_ID = buffer->ID_table.array[pos-1];
+            unsigned long insert_2_ID = buffer->ID_table.array[pos];
+            TextInsert *insert_1 = (set->array)+getInsertByID(set, insert_1_ID);
+            TextInsert *insert_2 = (set->array)+getInsertByID(set, insert_2_ID);
+
+            if ( is_a_ancestor_of_b (set, insert_1, insert_2) )
+            {
+                insert_ID = insert_2_ID;
+                charPos = buffer->charPos_table.array[pos];
+            }
+            else
+            {
+                insert_ID = insert_1_ID;
+                charPos = buffer->charPos_table.array[pos-1] + 1;
+            }
         }
 
 
