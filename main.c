@@ -330,22 +330,66 @@ unserialize_document ( TextInsertSet *set, char *string, size_t length )
 }
 
 void
-draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint32 *pixels, char show_cursor, FT_Face fontface)
+draw_cursor (int x, int y, Uint32 *pixels, FT_Face fontface)
+{
+    int i;
+    int height = (int) fontface->size->metrics.height >> 6;
+    for ( i=0; i<height; i++ )
+    {
+        SETPIXEL(x, y-i+height/8, 0xFFFFFFFF);
+    }
+}
+
+void
+draw_text (TextBuffer *buffer, char *text, int x, int y, Uint32 *pixels, char show_cursor, FT_Face fontface, int set_cursor_x, int set_cursor_y)
 {
     char character;
-    char *index = text;
-    char *char_after_cursor = text+buffer->cursor;
-    unsigned int zero_x = x;
+    int zero_x = x;
     int error;
     int height = (int) fontface->size->metrics.height / 64;
 
-    while ((character=(*index++)))
+    int i = 0;
+    while ((character=text[i]))
     {
+        int linewrap = 0;
+
         if (character == 10) {
-            x = zero_x;
-            y += height;
+            linewrap = 1;
+
+            if ( show_cursor == 1 && i == buffer->cursor )
+            {
+                draw_cursor(x, y, pixels, fontface);
+            }
         }
-        else {
+
+        else
+        {
+            if (character == 32)
+            {
+                char *lookahead = text+i;
+                int lookahead_x = x;
+                error = FT_Load_Char(fontface, *lookahead, FT_LOAD_RENDER);
+                lookahead_x += fontface->glyph->advance.x >> 6;
+                lookahead++;
+
+                while ( (*lookahead != 0) && (*lookahead != 32) )
+                {
+                    error = FT_Load_Char(fontface, *lookahead, FT_LOAD_RENDER);
+                    lookahead_x += fontface->glyph->advance.x >> 6;
+                    lookahead++;
+
+                    if (lookahead_x > WINDOW_WIDTH)
+                    {
+                        linewrap = 1;
+                        break;
+                    }
+                }
+                if (lookahead_x > WINDOW_WIDTH)
+                {
+                    linewrap = 1;
+                }
+            }
+
             error = FT_Load_Char( fontface, character, FT_LOAD_RENDER );
 
             FT_Bitmap bitmap = fontface->glyph->bitmap;
@@ -356,53 +400,69 @@ draw_text (TextBuffer *buffer, char *text, unsigned int x, unsigned int y, Uint3
                 return;
             }
 
-            else
+            //copy glyph into pixel array
+
+            unsigned int target_x, target_y;
+            target_x = x + fontface->glyph->bitmap_left;
+            target_y = y - fontface->glyph->bitmap_top;
+
+            if ( bitmap.pitch < 0 )
             {
-                //copy glyph into pixel array
+                printf("Freetype glyph bitmap pitch is negative. Surely wasn't expecting that...\n");
+                return;
+            }
 
-                unsigned int target_x, target_y;
-                target_x = x + fontface->glyph->bitmap_left;
-                target_y = y - fontface->glyph->bitmap_top;
-
-                if ( bitmap.pitch < 0 )
+            unsigned int row;
+            unsigned int col;
+            unsigned char *glyhp_buffer = (unsigned char *) (bitmap.buffer);
+            for ( row = 0; row < bitmap.rows; row++ )
+            {
+                for ( col = 0; col < bitmap.width; col++ )
                 {
-                    printf("Freetype glyph bitmap pitch is negative. Surely wasn't expecting that...\n");
-                    return;
-                }
-
-                unsigned int row;
-                unsigned int col;
-                unsigned char *buffer = (unsigned char *) (bitmap.buffer);
-                for ( row = 0; row < bitmap.rows; row++ )
-                {
-                    for ( col = 0; col < bitmap.width; col++ )
-                    {
-                        Uint32 color = *( buffer + row * (bitmap.pitch) + col );
-                        SETPIXEL(target_x+col, target_y+row, (color<<24)+(color<<16)+(color<<8)+255);
-                    }
+                    Uint32 color = *( glyhp_buffer + row * (bitmap.pitch) + col );
+                    SETPIXEL(target_x+col, target_y+row, (color<<24)+(color<<16)+(color<<8)+255);
                 }
             }
 
-            if ( show_cursor == 1 && index-1 == char_after_cursor ) //index-1 to compensate for the index++ in the for head
+            if ( show_cursor == 1 && i == buffer->cursor )
             {
-                int i;
-                for ( i=0; i<height; i++ )
-                {
-                    SETPIXEL(x, y-i+height/8, 0xFFFFFFFF);
-                }
+                draw_cursor(x, y, pixels, fontface);
             }
 
-            x += fontface->glyph->advance.x >> 6;
+            int advance = fontface->glyph->advance.x >> 6;
+            x += advance;
+
+            if ( (set_cursor_x >= 0) && (set_cursor_x <= x-(advance>>1)) && (set_cursor_y <= y) )
+            {
+                buffer->cursor = i;
+                set_cursor_x = set_cursor_y = -1; //click handled
+            }
+
         }
+
+        if (linewrap)
+        {
+            if ( (set_cursor_x >= 0) && (set_cursor_y <= y) ) //end of line click cursor positioning is not handled otherwise
+            {
+                buffer->cursor = i;
+                set_cursor_x = set_cursor_y = -1;
+            }
+
+            x = zero_x;
+            y += height;
+        }
+
+        i++;
     }
 
-    if ( show_cursor == 1 && index-1 == char_after_cursor )
+    if (set_cursor_x >= 0)
     {
-        int i;
-        for ( i=0; i<height; i++ )
-        {
-            SETPIXEL(x, y-i+height/8, 0xFFFFFFFF);
-        }
+        buffer->cursor = i;
+    }
+
+    if ( show_cursor == 1 && i == buffer->cursor )
+    {
+        draw_cursor(x, y, pixels, fontface);
     }
 }
 
@@ -712,6 +772,8 @@ int main (void)
     int quit=0;
     //int i;
     //int x, y;
+    int click_x, click_y;
+    click_x = click_y = -1;
 
 
     //short unsigned cursor = 0;
@@ -785,6 +847,13 @@ int main (void)
 
                 } break;
 
+                case SDL_MOUSEBUTTONDOWN:
+                {
+                    click_x = e.button.x;
+                    click_y = e.button.y;
+                    blink_timer = 0;
+                } break;
+
                 default:
                     break;
             }
@@ -802,12 +871,14 @@ int main (void)
 
         if (blink_timer < 128)
         {
-            draw_text(&buffer, buffer.text.array, 10, 100, pixels, 1, fontface);
+            draw_text(&buffer, buffer.text.array, 10, 100, pixels, 1, fontface, click_x, click_y);
         }
         else
         {
-            draw_text(&buffer, buffer.text.array, 10, 100, pixels, 0, fontface);
+            draw_text(&buffer, buffer.text.array, 10, 100, pixels, 0, fontface, click_x, click_y);
         }
+        click_x = click_y = -1;
+
         SDL_UpdateTexture(texture, NULL, pixels, WINDOW_WIDTH*sizeof(Uint32));
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
