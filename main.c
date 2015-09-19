@@ -347,6 +347,7 @@ draw_text (TextBuffer *buffer, char *text, int x, int y, Uint32 *pixels, char sh
     int zero_x = x;
     int error;
     int height = (int) fontface->size->metrics.height / 64;
+    y += height;
 
     int i = 0;
     while ((character=text[i]))
@@ -913,11 +914,11 @@ int main (void)
 
         if (blink_timer < 128)
         {
-            draw_text(&buffer, buffer.text.array, 10, 100, pixels, 1, fontface, click_x, click_y);
+            draw_text(&buffer, buffer.text.array, 10, 10, pixels, 1, fontface, click_x, click_y);
         }
         else
         {
-            draw_text(&buffer, buffer.text.array, 10, 100, pixels, 0, fontface, click_x, click_y);
+            draw_text(&buffer, buffer.text.array, 10, 10, pixels, 0, fontface, click_x, click_y);
         }
         click_x = click_y = -1;
 
