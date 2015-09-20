@@ -25,7 +25,7 @@ Uint8 crc_0x97_table[256];
 struct TextBuffer
 {
     unsigned short cursor;
-    insertID activeInsertID;
+    TextInsert *activeInsert;
     DynamicArray_char text;
     DynamicArray_pointer insert_table;
     DynamicArray_ulong charPos_table;
@@ -621,9 +621,9 @@ int
 insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, int write_fifo)
 {
 
-    if (buffer->activeInsertID)
+    if (buffer->activeInsert)
     {
-        TextInsert *insert = set->array + getInsertByID(set, buffer->activeInsertID);
+        TextInsert *insert = buffer->activeInsert;
         insert->content = realloc(insert->content, insert->length+1);
         insert->content[insert->length] = letter;
         insert->length++;
@@ -684,7 +684,8 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, int write_fi
         new_insert.content[0] = letter;
 
         addToTextInsertSet(set, new_insert);
-        buffer->activeInsertID = new_insert.selfID;
+        TextInsert *new_insert_pointer = set->array + set->used_length-1; //NOTE: not thread safe!
+        buffer->activeInsert = new_insert_pointer;
         
         send_insert(&new_insert, write_fifo);
 
@@ -822,7 +823,7 @@ int main (void)
 
     TextBuffer buffer;
     buffer.cursor = 0;
-    buffer.activeInsertID = 0;
+    buffer.activeInsert = NULL;
 
     initDynamicArray_char(&buffer.text);
     initDynamicArray_pointer(&buffer.insert_table);
@@ -885,7 +886,7 @@ int main (void)
                             if (buffer.cursor < buffer.text.used_length-1)
                             {
                                 buffer.cursor++;
-                                buffer.activeInsertID = 0;
+                                buffer.activeInsert = NULL;
                             }
                         } break;
 
@@ -894,7 +895,7 @@ int main (void)
                             if (buffer.cursor > 0)
                             {
                                 buffer.cursor--;
-                                buffer.activeInsertID = 0;
+                                buffer.activeInsert = NULL;
                             }
                         } break;
 
@@ -916,6 +917,7 @@ int main (void)
                     click_x = e.button.x;
                     click_y = e.button.y;
                     blink_timer = 0;
+                    buffer.activeInsert = NULL;
                 } break;
 
                 default:
