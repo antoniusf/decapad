@@ -651,20 +651,32 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, int write_fi
                 charPos = buffer->charPos_table.array[pos];
             }
         }
+
         else
         {
-            TextInsert *insert_1 = buffer->insert_table.array[pos-1];
-            TextInsert *insert_2 = buffer->insert_table.array[pos];
-
-            if ( is_a_ancestor_of_b (set, insert_1, insert_2) )
+            if (pos == buffer->insert_table.used_length )
             {
-                insert_ID = insert_2->selfID;
-                charPos = buffer->charPos_table.array[pos];
-            }
-            else
-            {
+                TextInsert *insert_1 = buffer->insert_table.array[pos-1];
                 insert_ID = insert_1->selfID;
                 charPos = buffer->charPos_table.array[pos-1] + 1;
+            }
+
+            else
+            {
+
+                TextInsert *insert_1 = buffer->insert_table.array[pos-1];
+                TextInsert *insert_2 = buffer->insert_table.array[pos];
+
+                if ( is_a_ancestor_of_b (set, insert_1, insert_2) )
+                {
+                    insert_ID = insert_2->selfID;
+                    charPos = buffer->charPos_table.array[pos];
+                }
+                else
+                {
+                    insert_ID = insert_1->selfID;
+                    charPos = buffer->charPos_table.array[pos-1] + 1;
+                }
             }
         }
 
