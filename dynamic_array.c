@@ -208,7 +208,7 @@ initDynamicArray_pointer ( DynamicArray_pointer *array )
 }
 
 int
-add_pointer ( DynamicArray_pointer *array, void *item )
+addToDynamicArray_pointer ( DynamicArray_pointer *array, void *item )
 {
     if (array->used_length == array->allocated_length)
     {

@@ -67,6 +67,6 @@ int
 initDynamicArray_pointer ( DynamicArray_pointer *array );
 
 int
-add_pointer ( DynamicArray_pointer *array, void *item );
+addToDynamicArray_pointer ( DynamicArray_pointer *array, void *item );
 
 #endif

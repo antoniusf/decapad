@@ -27,7 +27,7 @@ struct TextBuffer
     unsigned short cursor;
     insertID activeInsertID;
     DynamicArray_char text;
-    DynamicArray_ulong ID_table;
+    DynamicArray_pointer insert_table;
     DynamicArray_ulong charPos_table;
 };
 typedef struct TextBuffer TextBuffer;
@@ -533,10 +533,9 @@ quicksort (unsigned long *array, unsigned long min, unsigned long max)
 
 
 void
-render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos, TextBuffer *buffer)//buffer.text needs to be initialized; buffer.ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character, buffer.charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
+render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos, TextBuffer *buffer)//buffer.text needs to be initialized; buffer.insert_table (needs to be initialized too) stores a pointer to the insertion mark which contains each character, buffer.charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
 {
     unsigned int i;
-    TextInsert current_insert;
     DynamicArray_ulong IDs;
     initDynamicArray_ulong(&IDs);
 
@@ -561,25 +560,25 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos,
     for (i=0; i<IDs.used_length; i++)
     {
         //get insert
-        current_insert = set->array[getInsertByID(set, IDs.array[i])];
+        TextInsert *current_insert = set->array+getInsertByID(set, IDs.array[i]);
 
         //draw it
         int pos;
-        for (pos=0; pos<current_insert.length; pos++)
+        for (pos=0; pos<current_insert->length; pos++)
         {
             //render the inserts before this character position
-            render_text(set, current_insert.selfID, pos, buffer);
+            render_text(set, current_insert->selfID, pos, buffer);
 
             //stick the appropriate letter on the back
-            if (current_insert.content[pos] != 127)
+            if (current_insert->content[pos] != 127)
             {
-                addToDynamicArray_char(&buffer->text, current_insert.content[pos]);
-                addToDynamicArray_ulong(&buffer->ID_table, current_insert.selfID);
+                addToDynamicArray_char(&buffer->text, current_insert->content[pos]);
+                addToDynamicArray_pointer(&buffer->insert_table, current_insert);
                 addToDynamicArray_ulong(&buffer->charPos_table, pos);
             }
         }
 
-        render_text(set, current_insert.selfID, current_insert.length, buffer);
+        render_text(set, current_insert->selfID, current_insert->length, buffer);
     }
 
     free(IDs.array);
@@ -590,7 +589,7 @@ update_buffer (TextInsertSet *set, TextBuffer *buffer)
 {
     //update buffer
     buffer->text.used_length = 0;
-    buffer->ID_table.used_length = 0;
+    buffer->insert_table.used_length = 0;
     buffer->charPos_table.used_length = 0;
     render_text(set, 0, 0, buffer);
     addToDynamicArray_char(&buffer->text, 0);
@@ -647,25 +646,24 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, int write_fi
             }
             else
             {
-                insert_ID = buffer->ID_table.array[pos];
+                TextInsert *parent_insert = buffer->insert_table.array[pos];
+                insert_ID = parent_insert->selfID;
                 charPos = buffer->charPos_table.array[pos];
             }
         }
         else
         {
-            unsigned long insert_1_ID = buffer->ID_table.array[pos-1];
-            unsigned long insert_2_ID = buffer->ID_table.array[pos];
-            TextInsert *insert_1 = (set->array)+getInsertByID(set, insert_1_ID);
-            TextInsert *insert_2 = (set->array)+getInsertByID(set, insert_2_ID);
+            TextInsert *insert_1 = buffer->insert_table.array[pos-1];
+            TextInsert *insert_2 = buffer->insert_table.array[pos];
 
             if ( is_a_ancestor_of_b (set, insert_1, insert_2) )
             {
-                insert_ID = insert_2_ID;
+                insert_ID = insert_2->selfID;
                 charPos = buffer->charPos_table.array[pos];
             }
             else
             {
-                insert_ID = insert_1_ID;
+                insert_ID = insert_1->selfID;
                 charPos = buffer->charPos_table.array[pos-1] + 1;
             }
         }
@@ -699,12 +697,11 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, int write_fi
 int
 delete_letter ( TextInsertSet *set, TextBuffer *buffer, int write_fifo )
 {
-    if (buffer->cursor < buffer->ID_table.used_length)
+    if (buffer->cursor < buffer->insert_table.used_length)
     {
-        unsigned long insert_ID = buffer->ID_table.array[buffer->cursor];
+        TextInsert *insert = buffer->insert_table.array[buffer->cursor];
         unsigned short inner_pos = buffer->charPos_table.array[buffer->cursor];
 
-        TextInsert *insert = set->array + getInsertByID(set, insert_ID);
         insert->content[inner_pos] = 127;
 
         send_insert(insert, write_fifo);
@@ -828,7 +825,7 @@ int main (void)
     buffer.activeInsertID = 0;
 
     initDynamicArray_char(&buffer.text);
-    initDynamicArray_ulong(&buffer.ID_table);
+    initDynamicArray_pointer(&buffer.insert_table);
     initDynamicArray_ulong(&buffer.charPos_table);
 
     render_text(&set, 0, 0, &buffer);
@@ -994,7 +991,7 @@ int main (void)
     free(pixels);
 
     free(buffer.text.array);
-    free(buffer.ID_table.array);
+    free(buffer.insert_table.array);
     free(buffer.charPos_table.array);
 
     int i;
