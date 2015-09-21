@@ -319,11 +319,11 @@ send_data ( char *data, size_t length, network_data *network ) //data must have 
     initDynamicArray_char(&messagelength);
     base85_enc_uint32(length-5, &messagelength);
 
-    data[0] = messagelength.array[0]
-    data[1] = messagelength.array[1]
-    data[2] = messagelength.array[2]
-    data[3] = messagelength.array[3]
-    data[4] = messagelength.array[4]
+    data[0] = messagelength.array[0];
+    data[1] = messagelength.array[1];
+    data[2] = messagelength.array[2];
+    data[3] = messagelength.array[3];
+    data[4] = messagelength.array[4];
 
     if ( write(network->write_fifo, data, length) < 0 )
     {
@@ -344,22 +344,10 @@ send_insert ( TextInsert *insert, network_data *network )
 
     addStringToDynamicArray_char(&message, "*****data");
     serialize_insert(insert, &message);
-    base85_enc_uint32(message.used_length-5, &messagelength);
-
-    //copy length into the message
-    int i;
-    for (i=0; i<5; i++)
-    {
-        message.array[i] = messagelength.array[i];
-    }
-
-    if (write(network->write_fifo, message.array, message.used_length) < 0)
-    {
-        printf("Sending insert failed.\n");
-        return -1;
-    }
+    send_data(message.array, message.used_length, network);
 
     //enqueue insert pointer if not alread in queue
+    int i;
     int enqueued = 0;
     for (i=0; i < network->send_queue.used_length; i++)
     {
@@ -388,7 +376,6 @@ send_insert ( TextInsert *insert, network_data *network )
     }
 
     free(message.array);
-    free(messagelength.array);
     return 0;
 }
 
