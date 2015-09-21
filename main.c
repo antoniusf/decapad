@@ -32,6 +32,14 @@ struct TextBuffer
 };
 typedef struct TextBuffer TextBuffer;
 
+typedef struct network_data
+{
+    int read_fifo;
+    int write_fifo;
+    DynamicArray_pointer send_queue;
+    DynamicArray_pointer send_queue_free_slots;
+} network_data;
+
 unsigned int
 get_string_length (char *buffer) //*not* counting the 0 at the end
 {
@@ -295,11 +303,40 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t 
     }
     
     *return_insert_length = total_length;
+    return insert.selfID;
+}
+
+int
+send_data ( char *data, size_t length, network_data *network ) //data must have five unused leading characters. Those will be used for length encoding.
+{
+    if (length <= 5)
+    {
+        printf("You have nothing to send!\n");
+        return -1;
+    }
+
+    DynamicArray_char messagelength;
+    initDynamicArray_char(&messagelength);
+    base85_enc_uint32(length-5, &messagelength);
+
+    data[0] = messagelength.array[0]
+    data[1] = messagelength.array[1]
+    data[2] = messagelength.array[2]
+    data[3] = messagelength.array[3]
+    data[4] = messagelength.array[4]
+
+    if ( write(network->write_fifo, data, length) < 0 )
+    {
+        printf("Sending data failed.\n");
+        return -1;
+    }
+
+    free(messagelength.array);
     return 0;
 }
 
 int
-send_insert ( TextInsert *insert, int write_fifo )
+send_insert ( TextInsert *insert, network_data *network )
 {
     DynamicArray_char message, messagelength;
     initDynamicArray_char(&message);
@@ -316,10 +353,38 @@ send_insert ( TextInsert *insert, int write_fifo )
         message.array[i] = messagelength.array[i];
     }
 
-    if (write(write_fifo, message.array, message.used_length) < 0)
+    if (write(network->write_fifo, message.array, message.used_length) < 0)
     {
         printf("Sending insert failed.\n");
         return -1;
+    }
+
+    //enqueue insert pointer if not alread in queue
+    int enqueued = 0;
+    for (i=0; i < network->send_queue.used_length; i++)
+    {
+        if ( network->send_queue.array[i] == insert )
+        {
+            printf("Insert already in queue, do not enqueue again.\n");
+            enqueued = 1;
+            break;
+        }
+    }
+
+    if (!enqueued)
+    {
+        printf("Enqueueing insert %lu at %lu.\n", insert->selfID, insert);
+        if (network->send_queue_free_slots.used_length == 0)
+        {
+            addToDynamicArray_pointer(&network->send_queue, insert);
+        }
+        else
+        {
+            //pop a free slot and fill it with the insert
+            TextInsert **free_slot = network->send_queue_free_slots.array[network->send_queue_free_slots.used_length - 1];
+            network->send_queue_free_slots.used_length--;
+            *free_slot = insert;
+        }
     }
 
     free(message.array);
@@ -618,7 +683,7 @@ is_a_ancestor_of_b (TextInsertSet *set, TextInsert *a, TextInsert *b)
 }
 
 int
-insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, int write_fifo)
+insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, network_data *network)
 {
 
     if (buffer->activeInsert)
@@ -628,7 +693,7 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, int write_fi
         insert->content[insert->length] = letter;
         insert->length++;
 
-        send_insert(insert, write_fifo);
+        send_insert(insert, network);
     }
 
     else
@@ -699,7 +764,7 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, int write_fi
         TextInsert *new_insert_pointer = set->array + set->used_length-1; //NOTE: not thread safe!
         buffer->activeInsert = new_insert_pointer;
         
-        send_insert(&new_insert, write_fifo);
+        send_insert(new_insert_pointer, network);
 
     }
 
@@ -708,7 +773,7 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, int write_fi
 }
 
 int
-delete_letter ( TextInsertSet *set, TextBuffer *buffer, int write_fifo )
+delete_letter ( TextInsertSet *set, TextBuffer *buffer, network_data *network )
 {
     if (buffer->cursor < buffer->insert_table.used_length)
     {
@@ -717,7 +782,7 @@ delete_letter ( TextInsertSet *set, TextBuffer *buffer, int write_fifo )
 
         insert->content[inner_pos] = 127;
 
-        send_insert(insert, write_fifo);
+        send_insert(insert, network);
     }
     return 0;
 }
@@ -731,8 +796,12 @@ int main (void)
     crc8_0x97_fill_table();
 
     //fifo setup
-    int read_channel, read_fifo, write_fifo;
-    write_fifo = -1;
+    network_data network;
+    initDynamicArray_pointer(&network.send_queue);
+    initDynamicArray_pointer(&network.send_queue_free_slots);
+
+    int read_channel;
+    network.write_fifo = -1;
 
     error = mkfifo( "/tmp/deca_channel_1", 0777 );
     if (error == -1)
@@ -749,9 +818,9 @@ int main (void)
                 return 1;
             }
 
-            write_fifo = open("/tmp/deca_channel_1", O_WRONLY);
-            write(write_fifo, ".****Init", 9);
-            read_fifo = open("/tmp/deca_channel_2", O_RDONLY | O_NONBLOCK);
+            network.write_fifo = open("/tmp/deca_channel_1", O_WRONLY);
+            write(network.write_fifo, ".****Init", 9);
+            network.read_fifo = open("/tmp/deca_channel_2", O_RDONLY | O_NONBLOCK);
         }
 
         else
@@ -764,7 +833,7 @@ int main (void)
     else
     {
         read_channel = 1;
-        read_fifo = open("/tmp/deca_channel_1", O_RDONLY | O_NONBLOCK);
+        network.read_fifo = open("/tmp/deca_channel_1", O_RDONLY | O_NONBLOCK);
     }
     
     //Freetype setup
@@ -855,6 +924,7 @@ int main (void)
 
     //short unsigned cursor = 0;
     char unsigned blink_timer = 0;
+    int resend_timer = 0;
 
     while (!quit)
     {
@@ -869,7 +939,7 @@ int main (void)
 
                 case SDL_TEXTINPUT:
                 {
-                    insert_letter(&set, &buffer, e.text.text[0], write_fifo);
+                    insert_letter(&set, &buffer, e.text.text[0], &network);
                     blink_timer = 0;
 
                     update_buffer(&set, &buffer);
@@ -881,7 +951,7 @@ int main (void)
                     {
                         case SDLK_RETURN:
                         {
-                            insert_letter(&set, &buffer, 10, write_fifo);
+                            insert_letter(&set, &buffer, 10, &network);
                         } break;
 
                         case SDLK_BACKSPACE:
@@ -889,7 +959,7 @@ int main (void)
                             if (buffer.cursor > 0)
                             {
                                 buffer.cursor--;
-                                delete_letter (&set, &buffer, write_fifo);
+                                delete_letter (&set, &buffer, &network);
                             }
                         } break;
 
@@ -963,27 +1033,29 @@ int main (void)
         SDL_RenderPresent(renderer);
         
         blink_timer+=9;
+        resend_timer += 30;
         SDL_Delay(30);
 
         //check FIFO
         {
             char *base85_length = malloc(5);
-            if (read(read_fifo, base85_length, 5) == 5)
+            if (read(network.read_fifo, base85_length, 5) == 5)
             {
                 Uint32 length = base85_dec_uint32(base85_length);
                 printf("received message of length %i\n", length);
 
                 char *input = malloc(length);
-                read(read_fifo, input, length);
+                read(network.read_fifo, input, length);
 
-                if (string_compare(input, "Init", 4) && write_fifo < 0)
+                if (string_compare(input, "Init", 4) && network.write_fifo < 0)
                 {
-                    write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
+                    network.write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
                 }
 
                 else if (string_compare(input, "data", 4))
                 {
-                    unserialize_document(&set, input+4, length-4);
+                    int insert_length;
+                    Uint32 insert_ID = unserialize_insert(&set, input+4, length-4, &insert_length);
                     update_buffer(&set, &buffer);
                 }
 
@@ -995,6 +1067,24 @@ int main (void)
             if (buffer.cursor > buffer.text.used_length-1)//NOTE: if removing zero termination of buffer text, this -1 MUST be removed! (else, SEGFAULT....)
             {
                 buffer.cursor = buffer.text.used_length-1;
+            }
+        }
+
+        //resend un-ACKed inserts
+        if (resend_timer >= 1000) //every second
+        {
+            resend_timer = 0;
+
+            TextInsert *resend_insert;
+            int i;
+            for(i=0; i<network.send_queue.used_length; i++)
+            {
+                if (network.send_queue.array[i] != NULL)
+                {
+                    resend_insert = network.send_queue.array[i];
+                    printf("Resending insert %lu at %lu.\n", resend_insert->selfID, resend_insert);
+                    send_insert(resend_insert, &network);
+                }
             }
         }
     }
