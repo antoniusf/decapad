@@ -25,9 +25,9 @@ Uint8 crc_0x97_table[256];
 struct TextBuffer
 {
     unsigned short cursor;
-    TextInsert *activeInsert;
+    insertID activeInsertID;
     DynamicArray_char text;
-    DynamicArray_pointer insert_table;
+    DynamicArray_ulong ID_table;
     DynamicArray_ulong charPos_table;
 };
 typedef struct TextBuffer TextBuffer;
@@ -36,7 +36,7 @@ typedef struct network_data
 {
     int read_fifo;
     int write_fifo;
-    DynamicArray_pointer send_queue;
+    DynamicArray_ulong send_queue;
     DynamicArray_pointer send_queue_free_slots;
 } network_data;
 
@@ -351,7 +351,7 @@ send_insert ( TextInsert *insert, network_data *network )
     int enqueued = 0;
     for (i=0; i < network->send_queue.used_length; i++)
     {
-        if ( network->send_queue.array[i] == insert )
+        if ( network->send_queue.array[i] == insert->selfID )
         {
             printf("Insert already in queue, do not enqueue again.\n");
             enqueued = 1;
@@ -364,14 +364,14 @@ send_insert ( TextInsert *insert, network_data *network )
         printf("Enqueueing insert %lu at %lu.\n", insert->selfID, insert);
         if (network->send_queue_free_slots.used_length == 0)
         {
-            addToDynamicArray_pointer(&network->send_queue, insert);
+            addToDynamicArray_pointer(&network->send_queue, insert->selfID);
         }
         else
         {
-            //pop a free slot and fill it with the insert
-            TextInsert **free_slot = network->send_queue_free_slots.array[network->send_queue_free_slots.used_length - 1];
+            //pop a free slot and fill it with the insert ID
+            insertID *free_slot = network->send_queue_free_slots.array[network->send_queue_free_slots.used_length - 1];
             network->send_queue_free_slots.used_length--;
-            *free_slot = insert;
+            *free_slot = insert->selfID;
         }
     }
 
@@ -585,7 +585,7 @@ quicksort (unsigned long *array, unsigned long min, unsigned long max)
 
 
 void
-render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos, TextBuffer *buffer)//buffer.text needs to be initialized; buffer.insert_table (needs to be initialized too) stores a pointer to the insertion mark which contains each character, buffer.charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
+render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos, TextBuffer *buffer)//buffer.text needs to be initialized; buffer.ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character, buffer.charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
 {
     unsigned int i;
     DynamicArray_ulong IDs;
@@ -625,7 +625,7 @@ render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos,
             if (current_insert->content[pos] != 127)
             {
                 addToDynamicArray_char(&buffer->text, current_insert->content[pos]);
-                addToDynamicArray_pointer(&buffer->insert_table, current_insert);
+                addToDynamicArray_ulong(&buffer->ID_table, current_insert->selfID);
                 addToDynamicArray_ulong(&buffer->charPos_table, pos);
             }
         }
@@ -641,7 +641,7 @@ update_buffer (TextInsertSet *set, TextBuffer *buffer)
 {
     //update buffer
     buffer->text.used_length = 0;
-    buffer->insert_table.used_length = 0;
+    buffer->ID_table.used_length = 0;
     buffer->charPos_table.used_length = 0;
     render_text(set, 0, 0, buffer);
     addToDynamicArray_char(&buffer->text, 0);
@@ -673,9 +673,9 @@ int
 insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, network_data *network)
 {
 
-    if (buffer->activeInsert)
+    if (buffer->activeInsertID)
     {
-        TextInsert *insert = buffer->activeInsert;
+        TextInsert *insert = set->array + getInsertByID(set, buffer->activeInsertID);
         insert->content = realloc(insert->content, insert->length+1);
         insert->content[insert->length] = letter;
         insert->length++;
@@ -698,26 +698,26 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, network_data
             }
             else
             {
-                TextInsert *parent_insert = buffer->insert_table.array[pos];
-                insert_ID = parent_insert->selfID;
+                insert_ID = buffer->ID_table.array[pos];
                 charPos = buffer->charPos_table.array[pos];
             }
         }
 
         else
         {
-            if (pos == buffer->insert_table.used_length )
+            if (pos == buffer->ID_table.used_length )
             {
-                TextInsert *insert_1 = buffer->insert_table.array[pos-1];
-                insert_ID = insert_1->selfID;
+                insert_ID = buffer->ID_table.array[pos-1];
                 charPos = buffer->charPos_table.array[pos-1] + 1;
             }
 
             else
             {
 
-                TextInsert *insert_1 = buffer->insert_table.array[pos-1];
-                TextInsert *insert_2 = buffer->insert_table.array[pos];
+                insertID insert_1_ID = buffer->ID_table.array[pos-1];
+                insertID insert_2_ID = buffer->ID_table.array[pos];
+                TextInsert *insert_1 = set->array + getInsertByID(set, insert_1_ID);
+                TextInsert *insert_2 = set->array + getInsertByID(set, insert_2_ID);
 
                 if ( is_a_ancestor_of_b (set, insert_1, insert_2) )
                 {
@@ -749,7 +749,7 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, network_data
 
         addToTextInsertSet(set, new_insert);
         TextInsert *new_insert_pointer = set->array + set->used_length-1; //NOTE: not thread safe!
-        buffer->activeInsert = new_insert_pointer;
+        buffer->activeInsertID = new_insert.selfID;
         
         send_insert(new_insert_pointer, network);
 
@@ -762,9 +762,10 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, network_data
 int
 delete_letter ( TextInsertSet *set, TextBuffer *buffer, network_data *network )
 {
-    if (buffer->cursor < buffer->insert_table.used_length)
+    if (buffer->cursor < buffer->ID_table.used_length)
     {
-        TextInsert *insert = buffer->insert_table.array[buffer->cursor];
+        insertID insert_ID = buffer->ID_table.array[buffer->cursor];
+        TextInsert *insert = set->array + getInsertByID(set, insert_ID);
         unsigned short inner_pos = buffer->charPos_table.array[buffer->cursor];
 
         insert->content[inner_pos] = 127;
@@ -784,7 +785,7 @@ int main (void)
 
     //fifo setup
     network_data network;
-    initDynamicArray_pointer(&network.send_queue);
+    initDynamicArray_ulong(&network.send_queue);
     initDynamicArray_pointer(&network.send_queue_free_slots);
 
     int read_channel;
@@ -891,10 +892,10 @@ int main (void)
 
     TextBuffer buffer;
     buffer.cursor = 0;
-    buffer.activeInsert = NULL;
+    buffer.activeInsertID = 0;
 
     initDynamicArray_char(&buffer.text);
-    initDynamicArray_pointer(&buffer.insert_table);
+    initDynamicArray_pointer(&buffer.ID_table);
     initDynamicArray_ulong(&buffer.charPos_table);
 
     render_text(&set, 0, 0, &buffer);
@@ -955,7 +956,7 @@ int main (void)
                             if (buffer.cursor < buffer.text.used_length-1)
                             {
                                 buffer.cursor++;
-                                buffer.activeInsert = NULL;
+                                buffer.activeInsertID = 0;
                             }
                         } break;
 
@@ -964,7 +965,7 @@ int main (void)
                             if (buffer.cursor > 0)
                             {
                                 buffer.cursor--;
-                                buffer.activeInsert = NULL;
+                                buffer.activeInsertID = 0;
                             }
                         } break;
 
@@ -986,7 +987,7 @@ int main (void)
                     click_x = e.button.x;
                     click_y = e.button.y;
                     blink_timer = 0;
-                    buffer.activeInsert = NULL;
+                    buffer.activeInsertID = 0;
                 } break;
 
                 default:
@@ -1066,9 +1067,9 @@ int main (void)
             int i;
             for(i=0; i<network.send_queue.used_length; i++)
             {
-                if (network.send_queue.array[i] != NULL)
+                if (network.send_queue.array[i] != 0)
                 {
-                    resend_insert = network.send_queue.array[i];
+                    resend_insert = set.array + getInsertByID(&set, network.send_queue.array[i]);
                     printf("Resending insert %lu at %lu.\n", resend_insert->selfID, resend_insert);
                     send_insert(resend_insert, &network);
                 }
@@ -1082,7 +1083,7 @@ int main (void)
     free(pixels);
 
     free(buffer.text.array);
-    free(buffer.insert_table.array);
+    free(buffer.ID_table.array);
     free(buffer.charPos_table.array);
 
     int i;
