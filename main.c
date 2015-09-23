@@ -165,7 +165,26 @@ check_crc8_0x97 ( void *data, size_t length ) //checksum must be appended to dat
 }
 
 void
-base85_enc_uint32 ( Uint32 input, DynamicArray_char *output )
+base85_enc_uint32 ( Uint32 input, char *output )
+{
+    output[0] =  42 + ( input % 85 );
+    input /= 85;
+
+    output[1] =  42 + ( input % 85 );
+    input /= 85;
+
+    output[2] =  42 + ( input % 85 );
+    input /= 85;
+
+    output[3] =  42 + ( input % 85 );
+    input /= 85;
+
+    output[4] =  42 + ( input % 85 );
+
+}
+
+void
+append_base85_enc_uint32 ( Uint32 input, DynamicArray_char *output )
 {
     addToDynamicArray_char( output, 42 + ( input % 85 ) );
     input /= 85;
@@ -212,9 +231,9 @@ serialize_insert ( TextInsert *insert, DynamicArray_char *output )
 
     addToDynamicArray_char( output, 73 );// I for insert
 
-    base85_enc_uint32( insert->selfID, output );
-    base85_enc_uint32( insert->parentID, output );
-    base85_enc_uint32( (insert->charPos << 16) + insert->length + (insert->lock << 31), output );
+    append_base85_enc_uint32( insert->selfID, output );
+    append_base85_enc_uint32( insert->parentID, output );
+    append_base85_enc_uint32( (insert->charPos << 16) + insert->length + (insert->lock << 31), output );
 
     //copy over the text
     int i;
@@ -315,15 +334,7 @@ send_data ( char *data, size_t length, network_data *network ) //data must have 
         return -1;
     }
 
-    DynamicArray_char messagelength;
-    initDynamicArray_char(&messagelength);
-    base85_enc_uint32(length-5, &messagelength);
-
-    data[0] = messagelength.array[0];
-    data[1] = messagelength.array[1];
-    data[2] = messagelength.array[2];
-    data[3] = messagelength.array[3];
-    data[4] = messagelength.array[4];
+    base85_enc_uint32(length-5, data);
 
     if ( write(network->write_fifo, data, length) < 0 )
     {
@@ -331,7 +342,6 @@ send_data ( char *data, size_t length, network_data *network ) //data must have 
         return -1;
     }
 
-    free(messagelength.array);
     return 0;
 }
 
@@ -1045,7 +1055,35 @@ int main (void)
                     int insert_length;
                     Uint32 insert_ID = unserialize_insert(&set, input+4, length-4, &insert_length);
                     update_buffer(&set, &buffer);
+
+                    if(insert_ID >= 0)
+                    {
+                        //ACK
+                        char ack[14] = "*****ack *****";
+                        base85_enc_uint32(insert_ID, ack+9);
+                        send_data(ack, 14, &network);
+                    }
                 }
+
+                else if (string_compare(input, "ack ", 4))
+                {
+                    if (length == 4+5)
+                    {
+                        int i;
+                        Uint32 ack_id = base85_dec_uint32(input+4);
+                        for (i=0; i < network.send_queue.used_length; i++)
+                        {
+                            if ( network.send_queue.array[i] == ack_id )
+                            {
+                                //remove insert from the queue and mark its spot as free
+                                addToDynamicArray_pointer(&network.send_queue_free_slots, network.send_queue.array + i);
+                                network.send_queue.array[i] = 0;
+                                break;
+                            }
+                        }
+                    }
+                }
+
 
                 free(input);
             }
