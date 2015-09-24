@@ -1,15 +1,26 @@
 #ifndef MAIN_H
 #define MAIN_H
+#include <stdint.h>
 
-typedef unsigned long insertID;
+typedef uint8_t Uint8;
+typedef uint16_t Uint16;
+typedef uint32_t Uint32;
+typedef uint64_t Uint64;
+
+//typedef int8_t s8;
+//typedef int16_t s16;
+//typedef int32_t s32;
+//typedef int64_t s64;
+
+typedef Uint32 insertID;
 
 struct TextInsert
 {
-    unsigned long selfID;
-    unsigned long parentID;
-    unsigned short charPos;
+    Uint32 selfID;
+    Uint32 parentID;
+    Uint8 charPos;
     char lock;
-    unsigned short length;
+    Uint8 length;
     char *content;
 };
 typedef struct TextInsert TextInsert;

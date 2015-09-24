@@ -24,7 +24,7 @@ Uint8 crc_0x97_table[256];
 
 struct TextBuffer
 {
-    unsigned short cursor;
+    int cursor;
     insertID activeInsertID;
     DynamicArray_char text;
     DynamicArray_ulong ID_table;
@@ -40,10 +40,10 @@ typedef struct network_data
     DynamicArray_pointer send_queue_free_slots;
 } network_data;
 
-unsigned int
+int
 get_string_length (char *buffer) //*not* counting the 0 at the end
 {
-    unsigned int length = 0;
+    int length = 0;
     while (1)
     {
         if ( *(buffer+length) == 0 )
@@ -62,7 +62,7 @@ get_string_length (char *buffer) //*not* counting the 0 at the end
 void
 string_concat (char **buffer1, char **buffer2) //result will be in buffer1, both buffers must be 0-terminated
 {
-    unsigned int length1, length2, i;
+    int length1, length2, i;
     length1 = get_string_length(*buffer1);
     length2 = get_string_length(*buffer2);
     *buffer1 = realloc(*buffer1, length1+length2+1);
@@ -88,7 +88,7 @@ string_compare (char *buffer1, char *buffer2, int length)
 }
 
 long //so we can have all the unsigned ints *and* return -1 on not finding an insert
-getInsertByID (TextInsertSet *set, unsigned long selfID)
+getInsertByID (TextInsertSet *set, Uint32 selfID)
 {
     unsigned int i;
     for (i=0; i<set->used_length; i++)
@@ -227,7 +227,7 @@ base85_dec_uint32 ( char *input )
 void
 serialize_insert ( TextInsert *insert, DynamicArray_char *output )
 {
-    unsigned int start_length = output->used_length;
+    int start_length = output->used_length;
 
     addToDynamicArray_char( output, 73 );// I for insert
 
@@ -248,7 +248,7 @@ serialize_insert ( TextInsert *insert, DynamicArray_char *output )
     //printf("serialize crc: %i\n", crc_value);
 }
 
-int
+Sint64
 unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t *return_insert_length)
 {
     Uint32 mix = base85_dec_uint32( string+1+5+5 );
@@ -374,7 +374,7 @@ send_insert ( TextInsert *insert, network_data *network )
         printf("Enqueueing insert %lu at %lu.\n", insert->selfID, insert);
         if (network->send_queue_free_slots.used_length == 0)
         {
-            addToDynamicArray_pointer(&network->send_queue, insert->selfID);
+            addToDynamicArray_ulong(&network->send_queue, insert->selfID);
         }
         else
         {
@@ -489,7 +489,7 @@ draw_text (TextBuffer *buffer, char *text, int x, int y, Uint32 *pixels, char sh
 
             //copy glyph into pixel array
 
-            unsigned int target_x, target_y;
+            int target_x, target_y;
             target_x = x + fontface->glyph->bitmap_left;
             target_y = y - fontface->glyph->bitmap_top;
 
@@ -499,8 +499,8 @@ draw_text (TextBuffer *buffer, char *text, int x, int y, Uint32 *pixels, char sh
                 return;
             }
 
-            unsigned int row;
-            unsigned int col;
+            int row;
+            int col;
             unsigned char *glyhp_buffer = (unsigned char *) (bitmap.buffer);
             for ( row = 0; row < bitmap.rows; row++ )
             {
@@ -595,9 +595,9 @@ quicksort (unsigned long *array, unsigned long min, unsigned long max)
 
 
 void
-render_text (TextInsertSet *set, unsigned long parentID, unsigned short charPos, TextBuffer *buffer)//buffer.text needs to be initialized; buffer.ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character, buffer.charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
+render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buffer)//buffer.text needs to be initialized; buffer.ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character, buffer.charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
 {
-    unsigned int i;
+    int i;
     DynamicArray_ulong IDs;
     initDynamicArray_ulong(&IDs);
 
@@ -696,9 +696,9 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, network_data
     else
     {
 
-        unsigned short pos = buffer->cursor;
-        unsigned long insert_ID;
-        unsigned short charPos;
+        int pos = buffer->cursor;
+        Uint32 insert_ID;
+        Uint8 charPos;
         if ( pos == 0 )
         {
             if (set->used_length == 0)
@@ -776,7 +776,7 @@ delete_letter ( TextInsertSet *set, TextBuffer *buffer, network_data *network )
     {
         insertID insert_ID = buffer->ID_table.array[buffer->cursor];
         TextInsert *insert = set->array + getInsertByID(set, insert_ID);
-        unsigned short inner_pos = buffer->charPos_table.array[buffer->cursor];
+        Uint8 inner_pos = buffer->charPos_table.array[buffer->cursor];
 
         insert->content[inner_pos] = 127;
 
@@ -905,7 +905,7 @@ int main (void)
     buffer.activeInsertID = 0;
 
     initDynamicArray_char(&buffer.text);
-    initDynamicArray_pointer(&buffer.ID_table);
+    initDynamicArray_ulong(&buffer.ID_table);
     initDynamicArray_ulong(&buffer.charPos_table);
 
     render_text(&set, 0, 0, &buffer);
@@ -920,7 +920,6 @@ int main (void)
     click_x = click_y = -1;
 
 
-    //short unsigned cursor = 0;
     char unsigned blink_timer = 0;
     int resend_timer = 0;
 
@@ -1052,8 +1051,8 @@ int main (void)
 
                 else if (string_compare(input, "data", 4))
                 {
-                    int insert_length;
-                    Uint32 insert_ID = unserialize_insert(&set, input+4, length-4, &insert_length);
+                    size_t insert_length;
+                    Sint64 insert_ID = unserialize_insert(&set, input+4, length-4, &insert_length);
                     update_buffer(&set, &buffer);
 
                     if(insert_ID >= 0)
