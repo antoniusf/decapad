@@ -11,14 +11,13 @@
 #include "main.h"
 #include "dynamic_array.h"
 
-#define SETPIXEL(x, y, value) ( *(pixels+(x)+(y)*WINDOW_WIDTH) = (value) )
-
-//TODO: find a better way for this
-#define WINDOW_WIDTH 640
-#define WINDOW_HEIGHT 400
+#define SETPIXEL(x, y, value) ( *(pixels+(x)+(y)*window_width) = (value) )
 
 Uint64 ID_start;
 Uint64 ID_end;
+
+int window_width = 640;
+int window_height = 400;
 
 Uint8 crc_0x97_table[256];
 
@@ -465,13 +464,13 @@ draw_text (TextBuffer *buffer, char *text, int x, int y, Uint32 *pixels, char sh
                     lookahead_x += fontface->glyph->advance.x >> 6;
                     lookahead++;
 
-                    if (lookahead_x > WINDOW_WIDTH)
+                    if (lookahead_x > window_width)
                     {
                         linewrap = 1;
                         break;
                     }
                 }
-                if (lookahead_x > WINDOW_WIDTH)
+                if (lookahead_x > window_width)
                 {
                     linewrap = 1;
                 }
@@ -872,7 +871,7 @@ int main (void)
         return 1;
     }
 
-    SDL_Window *window = SDL_CreateWindow("Decapad", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
+    SDL_Window *window = SDL_CreateWindow("Decapad", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width, window_height, SDL_WINDOW_RESIZABLE);
     if (window == NULL) {
         SDL_Quit();
         printf("Window creation failed: %s", SDL_GetError());
@@ -891,9 +890,9 @@ int main (void)
     SDL_RenderClear(renderer);
     SDL_RenderPresent(renderer);
 
-    SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, WINDOW_WIDTH, WINDOW_HEIGHT);
+    SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, window_width, window_height);
 
-    Uint32 *pixels = malloc(WINDOW_WIDTH*WINDOW_HEIGHT*sizeof(Uint32));
+    Uint32 *pixels = malloc(window_width*window_height*sizeof(Uint32));
 
 
     //Logic
@@ -999,6 +998,25 @@ int main (void)
                     buffer.activeInsertID = 0;
                 } break;
 
+                case SDL_WINDOWEVENT:
+                {
+                    switch (e.window.event)
+                    {
+                        case SDL_WINDOWEVENT_RESIZED:
+                        {
+                            window_width = e.window.data1;
+                            window_height = e.window.data2;
+
+                            SDL_DestroyTexture(texture);
+                            texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, window_width, window_height);
+                            pixels = realloc(pixels, window_width*window_height*sizeof(Uint32));
+                        } break;
+                        
+                        default:
+                            break;
+                    }
+                } break;
+
                 default:
                     break;
             }
@@ -1007,7 +1025,7 @@ int main (void)
         //clear pixel buffer
         {
             Uint32 *pointer = pixels;
-            while(pointer < pixels+WINDOW_WIDTH*WINDOW_HEIGHT)
+            while(pointer < pixels+window_width*window_height)
             {
                 *pointer = 0;
                 pointer++;
@@ -1024,7 +1042,7 @@ int main (void)
         }
         click_x = click_y = -1;
 
-        SDL_UpdateTexture(texture, NULL, pixels, WINDOW_WIDTH*sizeof(Uint32));
+        SDL_UpdateTexture(texture, NULL, pixels, window_width*sizeof(Uint32));
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
