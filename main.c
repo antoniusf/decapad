@@ -11,13 +11,14 @@
 #include "main.h"
 #include "dynamic_array.h"
 
-#define SETPIXEL(x, y, value) ( *(pixels+(x)+(y)*window_width) = (value) )
+#define SETPIXEL(x, y, value) ( *(pixels+(x)+(y)*pitch) = (value) )
 
 Uint64 ID_start;
 Uint64 ID_end;
 
 int window_width = 640;
 int window_height = 400;
+int pitch;
 
 Uint8 crc_0x97_table[256];
 
@@ -892,7 +893,7 @@ int main (void)
 
     SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, window_width, window_height);
 
-    Uint32 *pixels = malloc(window_width*window_height*sizeof(Uint32));
+    Uint32 *pixels;
 
 
     //Logic
@@ -1009,7 +1010,6 @@ int main (void)
 
                             SDL_DestroyTexture(texture);
                             texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, window_width, window_height);
-                            pixels = realloc(pixels, window_width*window_height*sizeof(Uint32));
                         } break;
                         
                         default:
@@ -1021,6 +1021,9 @@ int main (void)
                     break;
             }
         }
+
+        int byte_pitch;
+        SDL_LockTexture(texture, NULL, &pixels, &byte_pitch);
 
         //clear pixel buffer
         {
@@ -1042,7 +1045,9 @@ int main (void)
         }
         click_x = click_y = -1;
 
-        SDL_UpdateTexture(texture, NULL, pixels, window_width*sizeof(Uint32));
+        //SDL_UpdateTexture(texture, NULL, pixels, window_width*sizeof(Uint32));
+        SDL_UnlockTexture(texture);
+        pitch = byte_pitch/4;
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
@@ -1135,7 +1140,6 @@ int main (void)
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
-    free(pixels);
 
     free(buffer.text.array);
     free(buffer.ID_table.array);
