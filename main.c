@@ -422,7 +422,10 @@ draw_cursor (int x, int y, Uint32 *pixels, FT_Face fontface)
     int height = (int) fontface->size->metrics.height >> 6;
     for ( i=0; i<height; i++ )
     {
-        SETPIXEL(x, y-i+height/8, 0xFFFFFFFF);
+        if ( (x < window_width) && (y < window_height) )
+        {
+            SETPIXEL(x, y-i+height/8, 0xFFFFFFFF);
+        }
     }
 }
 
@@ -506,8 +509,11 @@ draw_text (TextBuffer *buffer, char *text, int x, int y, Uint32 *pixels, char sh
             {
                 for ( col = 0; col < bitmap.width; col++ )
                 {
-                    Uint32 color = *( glyhp_buffer + row * (bitmap.pitch) + col );
-                    SETPIXEL(target_x+col, target_y+row, (color<<24)+(color<<16)+(color<<8)+255);
+                    if ( (target_y+row < window_height) && (target_x+col < window_width) )
+                    {
+                        Uint32 color = *( glyhp_buffer + row * (bitmap.pitch) + col );
+                        SETPIXEL(target_x+col, target_y+row, (color<<24)+(color<<16)+(color<<8)+255);
+                    }
                 }
             }
 
@@ -1024,6 +1030,7 @@ int main (void)
 
         int byte_pitch;
         SDL_LockTexture(texture, NULL, &pixels, &byte_pitch);
+        pitch = byte_pitch/4;
 
         //clear pixel buffer
         {
@@ -1047,7 +1054,6 @@ int main (void)
 
         //SDL_UpdateTexture(texture, NULL, pixels, window_width*sizeof(Uint32));
         SDL_UnlockTexture(texture);
-        pitch = byte_pitch/4;
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
