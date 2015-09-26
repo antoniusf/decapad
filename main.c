@@ -437,6 +437,12 @@ draw_text (TextBuffer *buffer, char *text, int x, int y, Uint32 *pixels, char sh
     int error;
     int height = (int) fontface->size->metrics.height / 64;
     y += height;
+    int draw = 0;
+
+    if (y >= 0)
+    {
+        draw = 1;
+    }
 
     int i = 0;
     while ((character=text[i]))
@@ -480,46 +486,49 @@ draw_text (TextBuffer *buffer, char *text, int x, int y, Uint32 *pixels, char sh
                 }
             }
 
-            error = FT_Load_Char( fontface, character, FT_LOAD_RENDER );
-
-            FT_Bitmap bitmap = fontface->glyph->bitmap;
-
-            if ( bitmap.pixel_mode != FT_PIXEL_MODE_GRAY )
+            if (draw)
             {
-                printf("Not the right Freetype glyph bitmap pixel mode! Sorry, it ran on my computer...\n");
-                return;
-            }
+                error = FT_Load_Char( fontface, character, FT_LOAD_RENDER );
 
-            //copy glyph into pixel array
+                FT_Bitmap bitmap = fontface->glyph->bitmap;
 
-            int target_x, target_y;
-            target_x = x + fontface->glyph->bitmap_left;
-            target_y = y - fontface->glyph->bitmap_top;
-
-            if ( bitmap.pitch < 0 )
-            {
-                printf("Freetype glyph bitmap pitch is negative. Surely wasn't expecting that...\n");
-                return;
-            }
-
-            int row;
-            int col;
-            unsigned char *glyhp_buffer = (unsigned char *) (bitmap.buffer);
-            for ( row = 0; row < bitmap.rows; row++ )
-            {
-                for ( col = 0; col < bitmap.width; col++ )
+                if ( bitmap.pixel_mode != FT_PIXEL_MODE_GRAY )
                 {
-                    if ( (target_y+row < window_height) && (target_x+col < window_width) )
+                    printf("Not the right Freetype glyph bitmap pixel mode! Sorry, it ran on my computer...\n");
+                    return;
+                }
+
+                //copy glyph into pixel array
+
+                int target_x, target_y;
+                target_x = x + fontface->glyph->bitmap_left;
+                target_y = y - fontface->glyph->bitmap_top;
+
+                if ( bitmap.pitch < 0 )
+                {
+                    printf("Freetype glyph bitmap pitch is negative. Surely wasn't expecting that...\n");
+                    return;
+                }
+
+                int row;
+                int col;
+                unsigned char *glyhp_buffer = (unsigned char *) (bitmap.buffer);
+                for ( row = 0; row < bitmap.rows; row++ )
+                {
+                    for ( col = 0; col < bitmap.width; col++ )
                     {
-                        Uint32 color = *( glyhp_buffer + row * (bitmap.pitch) + col );
-                        SETPIXEL(target_x+col, target_y+row, (color<<24)+(color<<16)+(color<<8)+255);
+                        if ( (target_y+row < window_height) && (target_x+col < window_width) )
+                        {
+                            Uint32 color = *( glyhp_buffer + row * (bitmap.pitch) + col );
+                            SETPIXEL(target_x+col, target_y+row, (color<<24)+(color<<16)+(color<<8)+255);
+                        }
                     }
                 }
-            }
 
-            if ( show_cursor == 1 && i == buffer->cursor )
-            {
-                draw_cursor(x, y, pixels, fontface);
+                if ( show_cursor == 1 && i == buffer->cursor )
+                {
+                    draw_cursor(x, y, pixels, fontface);
+                }
             }
 
             int advance = fontface->glyph->advance.x >> 6;
@@ -547,6 +556,10 @@ draw_text (TextBuffer *buffer, char *text, int x, int y, Uint32 *pixels, char sh
             if (y-height > window_height)
             {
                 break;
+            }
+            else if (y >= 0)
+            {
+                draw = 1;
             }
         }
 
