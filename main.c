@@ -543,6 +543,11 @@ draw_text (TextBuffer *buffer, char *text, int x, int y, Uint32 *pixels, char sh
 
             x = zero_x;
             y += height;
+
+            if (y-height > window_height)
+            {
+                break;
+            }
         }
 
         i++;
