@@ -25,6 +25,9 @@ Uint8 crc_0x97_table[256];
 struct TextBuffer
 {
     int cursor;
+    int x;
+    int y;
+    int line;
     insertID activeInsertID;
     DynamicArray_char text;
     DynamicArray_ulong ID_table;
@@ -422,7 +425,7 @@ draw_cursor (int x, int y, Uint32 *pixels, FT_Face fontface)
     int height = (int) fontface->size->metrics.height >> 6;
     for ( i=0; i<height; i++ )
     {
-        if ( (x < window_width) && (y < window_height) )
+        if ( (x >= 0) && (y-i+height/8 >= 0) && (x < window_width) && (y < window_height) )
         {
             SETPIXEL(x, y-i+height/8, 0xFFFFFFFF);
         }
@@ -430,64 +433,61 @@ draw_cursor (int x, int y, Uint32 *pixels, FT_Face fontface)
 }
 
 void
-draw_text (TextBuffer *buffer, char *text, int x, int y, Uint32 *pixels, char show_cursor, FT_Face fontface, int set_cursor_x, int set_cursor_y)
+draw_text (TextBuffer *buffer, char *text, Uint32 *pixels, char show_cursor, FT_Face fontface, int set_cursor_x, int set_cursor_y)
 {
     char character;
+    int x = buffer->x;
+    int y = buffer->y;
     int zero_x = x;
     int error;
     int height = (int) fontface->size->metrics.height / 64;
     y += height;
-    int draw = 0;
-
-    if (y >= 0)
-    {
-        draw = 1;
-    }
+    int current_line = 0;
 
     int i = 0;
     while ((character=text[i]))
     {
-        int linewrap = 0;
-
-        if (character == 10) {
-            linewrap = 1;
-
-            if ( show_cursor == 1 && i == buffer->cursor )
-            {
-                draw_cursor(x, y, pixels, fontface);
-            }
-        }
-
-        else
+        if (current_line+1 >= buffer->line)
         {
-            if (character == 32)
-            {
-                char *lookahead = text+i;
-                int lookahead_x = x;
-                error = FT_Load_Char(fontface, *lookahead, FT_LOAD_RENDER);
-                lookahead_x += fontface->glyph->advance.x >> 6;
-                lookahead++;
+            int linewrap = 0;
 
-                while ( (*lookahead != 0) && (*lookahead != 32) )
+            if (character == 10) {
+                linewrap = 1;
+
+                if ( show_cursor == 1 && i == buffer->cursor )
                 {
+                    draw_cursor(x, y, pixels, fontface);
+                }
+            }
+
+            else
+            {
+                if (character == 32)
+                {
+                    char *lookahead = text+i;
+                    int lookahead_x = x;
                     error = FT_Load_Char(fontface, *lookahead, FT_LOAD_RENDER);
                     lookahead_x += fontface->glyph->advance.x >> 6;
                     lookahead++;
 
+                    while ( (*lookahead != 0) && (*lookahead != 32) )
+                    {
+                        error = FT_Load_Char(fontface, *lookahead, FT_LOAD_RENDER);
+                        lookahead_x += fontface->glyph->advance.x >> 6;
+                        lookahead++;
+
+                        if (lookahead_x > window_width)
+                        {
+                            linewrap = 1;
+                            break;
+                        }
+                    }
                     if (lookahead_x > window_width)
                     {
                         linewrap = 1;
-                        break;
                     }
                 }
-                if (lookahead_x > window_width)
-                {
-                    linewrap = 1;
-                }
-            }
 
-            if (draw)
-            {
                 error = FT_Load_Char( fontface, character, FT_LOAD_RENDER );
 
                 FT_Bitmap bitmap = fontface->glyph->bitmap;
@@ -529,37 +529,41 @@ draw_text (TextBuffer *buffer, char *text, int x, int y, Uint32 *pixels, char sh
                 {
                     draw_cursor(x, y, pixels, fontface);
                 }
+
+                int advance = fontface->glyph->advance.x >> 6;
+                x += advance;
+
+                if ( (set_cursor_x >= 0) && (set_cursor_x <= x-(advance>>1)) && (set_cursor_y <= y) )
+                {
+                    buffer->cursor = i;
+                    set_cursor_x = set_cursor_y = -1; //click handled
+                }
+
             }
 
-            int advance = fontface->glyph->advance.x >> 6;
-            x += advance;
-
-            if ( (set_cursor_x >= 0) && (set_cursor_x <= x-(advance>>1)) && (set_cursor_y <= y) )
+            if (linewrap)
             {
-                buffer->cursor = i;
-                set_cursor_x = set_cursor_y = -1; //click handled
-            }
+                if ( (set_cursor_x >= 0) && (set_cursor_y <= y) ) //end of line click cursor positioning is not handled otherwise
+                {
+                    buffer->cursor = i;
+                    set_cursor_x = set_cursor_y = -1;
+                }
 
+                x = zero_x;
+                y += height;
+
+                if (y-height > window_height)
+                {
+                    break;
+                }
+            }
         }
 
-        if (linewrap)
+        else
         {
-            if ( (set_cursor_x >= 0) && (set_cursor_y <= y) ) //end of line click cursor positioning is not handled otherwise
+            if (character == 10)
             {
-                buffer->cursor = i;
-                set_cursor_x = set_cursor_y = -1;
-            }
-
-            x = zero_x;
-            y += height;
-
-            if (y-height > window_height)
-            {
-                break;
-            }
-            else if (y >= 0)
-            {
-                draw = 1;
+                current_line += 1;
             }
         }
 
@@ -927,6 +931,9 @@ int main (void)
     TextBuffer buffer;
     buffer.cursor = 0;
     buffer.activeInsertID = 0;
+    buffer.x = 10;
+    buffer.y = 10;
+    buffer.line = 0;
 
     initDynamicArray_char(&buffer.text);
     initDynamicArray_ulong(&buffer.ID_table);
@@ -1062,11 +1069,11 @@ int main (void)
 
         if (blink_timer < 128)
         {
-            draw_text(&buffer, buffer.text.array, 10, 10, pixels, 1, fontface, click_x, click_y);
+            draw_text(&buffer, buffer.text.array, pixels, 1, fontface, click_x, click_y);
         }
         else
         {
-            draw_text(&buffer, buffer.text.array, 10, 10, pixels, 0, fontface, click_x, click_y);
+            draw_text(&buffer, buffer.text.array, pixels, 0, fontface, click_x, click_y);
         }
         click_x = click_y = -1;
 
