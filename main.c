@@ -432,6 +432,48 @@ draw_cursor (int x, int y, Uint32 *pixels, FT_Face fontface)
     }
 }
 
+int
+number_of_linewraps (char *text, int left_padding, FT_Face fontface)
+{
+    int i = 0;
+    char character = text[0]; //for the first check
+    int linewraps = 0;
+    int x = left_padding;
+    int word_length = 0;
+
+    for (i = 0; (character != 10 && character != 0); i++)
+    {
+        character = text[i];
+        if (character == 32)
+        {
+            x += word_length;
+            word_length = 0;
+            FT_Load_Char(fontface, character, FT_LOAD_RENDER);
+            x += fontface->glyph->advance.x / 64;
+
+            if (x > window_width)
+            {
+                x = left_padding;
+                linewraps++;
+            }
+        }
+        else
+        {
+            FT_Load_Char(fontface, character, FT_LOAD_RENDER);
+            word_length += fontface->glyph->advance.x / 64;
+
+            if ( word_length+x > window_width )
+            {
+                x = left_padding;
+                linewraps++;
+            }
+        }
+    }
+
+    return linewraps;
+}
+
+
 void
 draw_text (TextBuffer *buffer, char *text, Uint32 *pixels, char show_cursor, FT_Face fontface, int set_cursor_x, int set_cursor_y)
 {
@@ -447,7 +489,7 @@ draw_text (TextBuffer *buffer, char *text, Uint32 *pixels, char show_cursor, FT_
     int i = 0;
     while ((character=text[i]))
     {
-        if (current_line+1 >= buffer->line)
+        if (current_line >= buffer->line)
         {
             int linewrap = 0;
 
@@ -467,13 +509,13 @@ draw_text (TextBuffer *buffer, char *text, Uint32 *pixels, char show_cursor, FT_
                     char *lookahead = text+i;
                     int lookahead_x = x;
                     error = FT_Load_Char(fontface, *lookahead, FT_LOAD_RENDER);
-                    lookahead_x += fontface->glyph->advance.x >> 6;
+                    lookahead_x += fontface->glyph->advance.x / 64;
                     lookahead++;
 
-                    while ( (*lookahead != 0) && (*lookahead != 32) )
+                    while ( (*lookahead != 0) && (*lookahead != 32) && (*lookahead != 10))
                     {
                         error = FT_Load_Char(fontface, *lookahead, FT_LOAD_RENDER);
-                        lookahead_x += fontface->glyph->advance.x >> 6;
+                        lookahead_x += fontface->glyph->advance.x / 64;
                         lookahead++;
 
                         if (lookahead_x > window_width)
