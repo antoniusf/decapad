@@ -473,6 +473,35 @@ number_of_linewraps (char *text, int left_padding, FT_Face fontface)
     return linewraps;
 }
 
+char *
+seek_to_line (char *text, int line)
+{
+    if (line == 0)
+    {
+        return text;
+    }
+
+    int newlines = 0;
+    while (*text++)
+    {
+        if (*(text-1) == 10)
+        {
+            newlines++;
+
+            if (newlines == line)
+            {
+                break;
+            }
+        }
+    }
+    
+    if (*(text-1) == 0) //we ran out text, line number too high
+    {
+        return NULL;
+    }
+    return text;
+}
+
 
 void
 draw_text (TextBuffer *buffer, char *text, Uint32 *pixels, char show_cursor, FT_Face fontface, int set_cursor_x, int set_cursor_y)
@@ -924,6 +953,8 @@ int main (void)
 
     error = FT_Set_Pixel_Sizes(fontface, 0, 24);
 
+    int line_height = (int) fontface->size->metrics.height / 64;
+
     if (read_channel == 1)
     {
         ID_start = 1;
@@ -974,7 +1005,7 @@ int main (void)
     buffer.cursor = 0;
     buffer.activeInsertID = 0;
     buffer.x = 10;
-    buffer.y = 10;
+    buffer.y = 0;
     buffer.line = 0;
 
     initDynamicArray_char(&buffer.text);
@@ -1070,6 +1101,54 @@ int main (void)
                     click_y = e.button.y;
                     blink_timer = 0;
                     buffer.activeInsertID = 0;
+                } break;
+
+                case SDL_MOUSEWHEEL:
+                {
+                    if (e.wheel.y < 0)
+                    {
+                        buffer.y -= line_height;
+                    }
+                    else
+                    {
+                        buffer.y += line_height;
+                    }
+
+                    if (buffer.y > 0)
+                    {
+                        if (buffer.line == 0)
+                        {
+                            buffer.y = 0;
+                        }
+
+                        else
+                        {
+                            char *previous_line = seek_to_line(buffer.text.array, buffer.line-1);
+                            int offset = (number_of_linewraps(previous_line, buffer.x, fontface)+1) * line_height;
+                            buffer.line--;
+                            buffer.y -= offset;
+                        }
+                    }
+
+                    else
+                    {
+                        char *current_line = seek_to_line(buffer.text.array, buffer.line);
+                        int current_line_height = (number_of_linewraps(current_line, buffer.x, fontface)+1) * line_height;
+                        if (-buffer.y > current_line_height)
+                        {
+                            char *next_line = seek_to_line(buffer.text.array, buffer.line+1);
+                            if (next_line)
+                            {
+                                buffer.line++;
+                                buffer.y += current_line_height;
+                            }
+                            else
+                            {
+                                buffer.y = -current_line_height;
+                            }
+                        }
+                    }
+
                 } break;
 
                 case SDL_WINDOWEVENT:
