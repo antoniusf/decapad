@@ -26,7 +26,8 @@ struct TextBuffer
 {
     int cursor;
     int x;
-    int y;
+    int line_y;
+    int y_padding;
     int line;
     insertID activeInsertID;
     DynamicArray_char text;
@@ -508,7 +509,7 @@ draw_text (TextBuffer *buffer, char *text, Uint32 *pixels, char show_cursor, FT_
 {
     char character;
     int x = buffer->x;
-    int y = buffer->y;
+    int y = buffer->line_y + buffer->y_padding;
     int zero_x = x;
     int error;
     int height = (int) fontface->size->metrics.height / 64;
@@ -588,7 +589,7 @@ draw_text (TextBuffer *buffer, char *text, Uint32 *pixels, char show_cursor, FT_
                 {
                     for ( col = 0; col < bitmap.width; col++ )
                     {
-                        if ( (target_y+row < window_height) && (target_x+col < window_width) )
+                        if ( (target_y+row < window_height) && (target_y+row > 0) && (target_x+col < window_width) && (target_x+col > 0) )
                         {
                             Uint32 color = *( glyhp_buffer + row * (bitmap.pitch) + col );
                             SETPIXEL(target_x+col, target_y+row, (color<<24)+(color<<16)+(color<<8)+255);
@@ -1005,7 +1006,8 @@ int main (void)
     buffer.cursor = 0;
     buffer.activeInsertID = 0;
     buffer.x = 10;
-    buffer.y = 0;
+    buffer.line_y = 0;
+    buffer.y_padding = 10;
     buffer.line = 0;
 
     initDynamicArray_char(&buffer.text);
@@ -1107,18 +1109,18 @@ int main (void)
                 {
                     if (e.wheel.y < 0)
                     {
-                        buffer.y -= line_height;
+                        buffer.line_y -= line_height;
                     }
                     else
                     {
-                        buffer.y += line_height;
+                        buffer.line_y += line_height;
                     }
 
-                    if (buffer.y > 0)
+                    if (buffer.line_y > 0)
                     {
                         if (buffer.line == 0)
                         {
-                            buffer.y = 0;
+                            buffer.line_y = 0;
                         }
 
                         else
@@ -1126,7 +1128,7 @@ int main (void)
                             char *previous_line = seek_to_line(buffer.text.array, buffer.line-1);
                             int offset = (number_of_linewraps(previous_line, buffer.x, fontface)+1) * line_height;
                             buffer.line--;
-                            buffer.y -= offset;
+                            buffer.line_y -= offset;
                         }
                     }
 
@@ -1134,17 +1136,17 @@ int main (void)
                     {
                         char *current_line = seek_to_line(buffer.text.array, buffer.line);
                         int current_line_height = (number_of_linewraps(current_line, buffer.x, fontface)+1) * line_height;
-                        if (-buffer.y > current_line_height)
+                        if (-buffer.line_y > current_line_height)
                         {
                             char *next_line = seek_to_line(buffer.text.array, buffer.line+1);
                             if (next_line)
                             {
                                 buffer.line++;
-                                buffer.y += current_line_height;
+                                buffer.line_y += current_line_height;
                             }
                             else
                             {
-                                buffer.y = -current_line_height;
+                                buffer.line_y = -current_line_height;
                             }
                         }
                     }
