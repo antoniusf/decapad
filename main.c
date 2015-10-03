@@ -40,6 +40,7 @@ typedef struct network_data
 {
     int read_fifo;
     int write_fifo;
+    int init_received;
     DynamicArray_ulong send_queue;
     DynamicArray_pointer send_queue_free_slots;
 } network_data;
@@ -933,6 +934,7 @@ int main (void)
     ID_end = 1024;
 
     network_data network;
+    network.init_received = 1;
     initDynamicArray_ulong(&network.send_queue);
     initDynamicArray_pointer(&network.send_queue_free_slots);
 
@@ -955,6 +957,7 @@ int main (void)
             }
 
             network.write_fifo = open("/tmp/deca_channel_1", O_WRONLY);
+            network.init_received = 0;
             send_init(&network);
             network.read_fifo = open("/tmp/deca_channel_2", O_RDONLY | O_NONBLOCK);
         }
@@ -1254,11 +1257,13 @@ int main (void)
                     input[14] = crc_value;
                     if (check_crc8_0x97(input, 4+5+5+1) == 0)
                     {
-                        printf("init crc correct!\n");
+                        ID_start = base85_dec_uint32(input+4);
+                        ID_end = base85_dec_uint32(input+9);
+                        network.write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
+                        //ack init
+                        char ack_message[] = "[len]acki";
+                        send_data(ack_message, 9, &network);
                     }
-                    ID_start = base85_dec_uint32(input+4);
-                    ID_end = base85_dec_uint32(input+9);
-                    network.write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
                 }
 
                 else if (string_compare(input, "data", 4))
@@ -1294,6 +1299,10 @@ int main (void)
                         }
                     }
                 }
+                else if (string_compare(input, "acki", 4))
+                {
+                    network.init_received = 1;
+                }
 
 
                 free(input);
@@ -1322,6 +1331,11 @@ int main (void)
                     printf("Resending insert %lu at %lu.\n", resend_insert->selfID, resend_insert);
                     send_insert(resend_insert, &network);
                 }
+            }
+
+            if (network.init_received == 0)
+            {
+                send_init(&network);
             }
         }
     }
