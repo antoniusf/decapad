@@ -18,6 +18,7 @@ struct TextInsert
 {
     Uint32 selfID;
     Uint32 parentID;
+    Uint32 author;
     Uint8 charPos;
     char lock;
     Uint8 length;

@@ -252,6 +252,7 @@ serialize_insert ( TextInsert *insert, DynamicArray_char *output )
 
     append_base85_enc_uint32( insert->selfID, output );
     append_base85_enc_uint32( insert->parentID, output );
+    append_base85_enc_uint32( insert->author, output );
     append_base85_enc_uint32( (insert->charPos << 16) + insert->length + (insert->lock << 31), output );
 
     //copy over the text
@@ -270,9 +271,9 @@ serialize_insert ( TextInsert *insert, DynamicArray_char *output )
 Sint64
 unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t *return_insert_length)
 {
-    Uint32 mix = base85_dec_uint32( string+1+5+5 );
+    Uint32 mix = base85_dec_uint32( string+1+5+5+5 );
     int insert_content_length = mix&0xFFFF;
-    size_t total_length = 1+5+5+5+insert_content_length+2;
+    size_t total_length = 1+5+5+5+5+insert_content_length+2;
 
     if (total_length > maxlength)
     {
@@ -294,6 +295,7 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t 
     insert.selfID = base85_dec_uint32( string+1 );
 
     insert.parentID = base85_dec_uint32( string+1+5 );
+    insert.author = base85_dec_uint32(string+1+5+5);
 
     insert.charPos = (mix>>16)&0xFFFF;
     insert.length = insert_content_length;
@@ -303,7 +305,7 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t 
     int i;
     for (i=0; i<insert.length; i++)
     {
-        insert.content[i] = string[i+1+5+5+5];
+        insert.content[i] = string[i+1+5+5+5+5];
     }
 
     long old_insert_pos = getInsertByID(set, insert.selfID);
@@ -885,6 +887,7 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, network_data
             exit(1);
         }
         new_insert.parentID = insert_ID;
+        new_insert.author = ID_start;
         new_insert.charPos = charPos;
         new_insert.lock = 0;
         new_insert.length = 1;
