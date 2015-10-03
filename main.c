@@ -169,6 +169,20 @@ check_crc8_0x97 ( void *data, size_t length ) //checksum must be appended to dat
 }
 
 void
+base32_enc_crc ( Uint8 crc_value, char *output )
+{
+    output[0] = (crc_value>>4) + 65;
+    output[1] = (crc_value&0x0F) + 65;
+}
+
+Uint8
+base32_dec_crc ( char *data )
+{
+    Uint8 crc_value = ( (data[0]-65)<<4 ) + (data[1]-65);
+    return crc_value;
+}
+
+void
 base85_enc_uint32 ( Uint32 input, char *output )
 {
     output[0] =  42 + ( input % 85 );
@@ -347,6 +361,25 @@ send_data ( char *data, size_t length, network_data *network ) //data must have 
     }
 
     return 0;
+}
+
+void
+send_init (network_data *network)
+{
+    int i;
+    for (i=0; i<10; i++)
+    {
+        char init_message[] = "[len]Init/urid/enid..";
+        base85_enc_uint32(ID_end+1, &init_message[9]);
+        base85_enc_uint32(20048, &init_message[14]);
+        Uint8 crc_value = crc8_0x97(&init_message[5], 4+5+5);
+        base32_enc_crc(crc_value, &init_message[19]);
+        if (send_data(init_message, 21, network) == 0)
+        {
+            return;
+        }
+    }
+    printf("Sending init failed for unknown reasons\n");
 }
 
 int
@@ -894,6 +927,11 @@ int main (void)
     crc8_0x97_fill_table();
 
     //fifo setup
+
+    //this ID range is only for the first client...
+    ID_start = 1;
+    ID_end = 1024;
+
     network_data network;
     initDynamicArray_ulong(&network.send_queue);
     initDynamicArray_pointer(&network.send_queue_free_slots);
@@ -917,7 +955,7 @@ int main (void)
             }
 
             network.write_fifo = open("/tmp/deca_channel_1", O_WRONLY);
-            write(network.write_fifo, ".****Init", 9);
+            send_init(&network);
             network.read_fifo = open("/tmp/deca_channel_2", O_RDONLY | O_NONBLOCK);
         }
 
@@ -955,17 +993,6 @@ int main (void)
     error = FT_Set_Pixel_Sizes(fontface, 0, 24);
 
     int line_height = (int) fontface->size->metrics.height / 64;
-
-    if (read_channel == 1)
-    {
-        ID_start = 1;
-        ID_end = 1024;
-    }
-    else
-    {
-        ID_start = 1025;
-        ID_end = 2048;
-    }
 
     //SDL setup
 
@@ -1223,6 +1250,14 @@ int main (void)
 
                 if (string_compare(input, "Init", 4) && network.write_fifo < 0)
                 {
+                    Uint8 crc_value = base32_dec_crc(input+14);
+                    input[14] = crc_value;
+                    if (check_crc8_0x97(input, 4+5+5+1) == 0)
+                    {
+                        printf("init crc correct!\n");
+                    }
+                    ID_start = base85_dec_uint32(input+4);
+                    ID_end = base85_dec_uint32(input+9);
                     network.write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
                 }
 
