@@ -42,7 +42,7 @@ typedef struct network_data
 {
     int read_fifo;
     int write_fifo;
-    int init_received;
+    int init_acknowledged;
     DynamicArray_ulong send_queue;
     DynamicArray_pointer send_queue_free_slots;
 } network_data;
@@ -958,7 +958,7 @@ int main (void)
     ID_end = 1024;
 
     network_data network;
-    network.init_received = 1;
+    network.init_acknowledged = 1;
     initDynamicArray_ulong(&network.send_queue);
     initDynamicArray_pointer(&network.send_queue_free_slots);
 
@@ -981,8 +981,8 @@ int main (void)
             }
 
             network.write_fifo = open("/tmp/deca_channel_1", O_WRONLY);
-            network.init_received = 0;
-            send_init(&network);
+            char init_request[] = "[len]inrq";
+            send_data(init_request, 9, &network);
             network.read_fifo = open("/tmp/deca_channel_2", O_RDONLY | O_NONBLOCK);
         }
 
@@ -1276,7 +1276,7 @@ int main (void)
                 char *input = malloc(length);
                 read(network.read_fifo, input, length);
 
-                if (string_compare(input, "Init", 4) && network.write_fifo < 0)
+                if (string_compare(input, "Init", 4))
                 {
                     Uint8 crc_value = base32_dec_crc(input+14);
                     input[14] = crc_value;
@@ -1284,11 +1284,17 @@ int main (void)
                     {
                         author_ID = ID_start = base85_dec_uint32(input+4);
                         ID_end = base85_dec_uint32(input+9);
-                        network.write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
                         //ack init
                         char ack_message[] = "[len]acki";
                         send_data(ack_message, 9, &network);
                     }
+                }
+
+                else if (string_compare(input, "inrq", 4))
+                {
+                    network.write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
+                    network.init_acknowledged = 0;
+                    send_init(&network);
                 }
 
                 else if (string_compare(input, "data", 4))
@@ -1326,7 +1332,7 @@ int main (void)
                 }
                 else if (string_compare(input, "acki", 4))
                 {
-                    network.init_received = 1;
+                    network.init_acknowledged = 1;
                 }
 
 
@@ -1358,7 +1364,7 @@ int main (void)
                 }
             }
 
-            if (network.init_received == 0)
+            if (network.init_acknowledged == 0)
             {
                 send_init(&network);
             }
