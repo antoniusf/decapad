@@ -498,7 +498,7 @@ number_of_linewraps (char *text, int left_padding, FT_Face fontface)
         }
         else
         {
-            FT_Load_Char(fontface, character, FT_LOAD_RENDER);
+            FT_Load_Char(fontface, character, FT_LOAD_DEFAULT);
             word_length += fontface->glyph->advance.x / 64;
 
             if ( word_length+x > window_width )
@@ -576,7 +576,7 @@ draw_text (TextBuffer *buffer, char *text, Uint32 *pixels, char show_cursor, FT_
                 {
                     char *lookahead = text+i;
                     int lookahead_x = x;
-                    error = FT_Load_Char(fontface, *lookahead, FT_LOAD_RENDER);
+                    error = FT_Load_Char(fontface, *lookahead, FT_LOAD_DEFAULT);
                     lookahead_x += fontface->glyph->advance.x / 64;
                     lookahead++;
 
