@@ -903,7 +903,7 @@ is_a_ancestor_of_b (TextInsertSet *set, TextInsert *a, TextInsert *b)
 }
 
 int
-insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, network_data *network)
+insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_data *network)
 {
 
     if (buffer->activeInsertID)
@@ -1167,11 +1167,6 @@ int main (void)
                     DynamicArray_uint32 utf32_encoded;
                     initDynamicArray_uint32(&utf32_encoded);
                     utf8_to_utf32(e.text.text, &utf32_encoded);
-                    int i;
-                    for (i=0; i<utf32_encoded.used_length; i++)
-                    {
-                        printf("%lu\n", utf32_encoded.array[i]);
-                    }
                     //TODO: multi-letter insert
                     insert_letter(&set, &buffer, utf32_encoded.array[0], &network);
                     blink_timer = 0;
