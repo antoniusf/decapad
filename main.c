@@ -709,7 +709,7 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
 }
 
 void
-utf8_to_utf32 ( char *in, DynamicArray_ulong *out )
+utf8_to_utf32 ( char *in, DynamicArray_uint32 *out )
 {
 
     int i;
@@ -729,39 +729,40 @@ utf8_to_utf32 ( char *in, DynamicArray_ulong *out )
         else if ( (in[i] & 0x20) == 0)
         {
             utfchar = in[i] & 0x1f;
-            utfchar <<= 5;
+
+            utfchar <<= 6;
             i++;
-            utfchar += in[i];
+            utfchar += in[i] & 0x3f;
         }
 
         else if ( (in[i] & 0x10) == 0)
         {
             utfchar = in[i] & 0x0f;
-            utfchar <<= 4;
-            i++;
 
-            utfchar += in[i];
-            utfchar <<= 8;
+            utfchar <<= 6;
             i++;
+            utfchar += in[i] & 0x3f;
 
-            utfchar += in[i];
+            utfchar <<= 6;
+            i++;
+            utfchar += in[i] & 0x3f;
         }
 
         else if ( (in[i] & 0x08) == 0)
         {
             utfchar = in[i] & 0x07;
-            utfchar <<= 3;
-            i++;
 
-            utfchar += in[i];
-            utfchar <<= 8;
+            utfchar <<= 6;
             i++;
+            utfchar += in[i] & 0x3f;
 
-            utfchar += in[i];
-            utfchar <<= 8;
+            utfchar <<= 6;
             i++;
+            utfchar += in[i] & 0x3f;
 
-            utfchar += in[i];
+            utfchar <<= 6;
+            i++;
+            utfchar += in[i] & 0x3f;
         }
 
         else
@@ -769,7 +770,7 @@ utf8_to_utf32 ( char *in, DynamicArray_ulong *out )
             printf("What is that fifth continuation doing here?? (This should never happen)\n");
         }
 
-        addToDynamicArray_ulong(out, utfchar);
+        addToDynamicArray_uint32(out, utfchar);
     }
 }
 
@@ -1163,7 +1164,16 @@ int main (void)
 
                 case SDL_TEXTINPUT:
                 {
-                    insert_letter(&set, &buffer, e.text.text[0], &network);
+                    DynamicArray_uint32 utf32_encoded;
+                    initDynamicArray_uint32(&utf32_encoded);
+                    utf8_to_utf32(e.text.text, &utf32_encoded);
+                    int i;
+                    for (i=0; i<utf32_encoded.used_length; i++)
+                    {
+                        printf("%lu\n", utf32_encoded.array[i]);
+                    }
+                    //TODO: multi-letter insert
+                    insert_letter(&set, &buffer, utf32_encoded.array[0], &network);
                     blink_timer = 0;
 
                     update_buffer(&set, &buffer);
