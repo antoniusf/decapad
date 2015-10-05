@@ -1337,10 +1337,11 @@ int main (void)
             if (read(network.read_fifo, base85_length, 5) == 5)
             {
                 Uint32 length = base85_dec_uint32(base85_length);
-                printf("received message of length %i\n", length);
 
                 char *input = malloc(length);
                 read(network.read_fifo, input, length);
+
+                printf("Received message of length %i: %.*s\n", length, length, input);
 
                 if (string_compare(input, "Init", 4))
                 {
@@ -1414,7 +1415,7 @@ int main (void)
         }
 
         //resend un-ACKed inserts
-        if (resend_timer >= 1000) //every second
+        if (resend_timer >= 10000) //every ten seconds
         {
             resend_timer = 0;
 
