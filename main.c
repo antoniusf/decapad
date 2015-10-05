@@ -31,7 +31,7 @@ struct TextBuffer
     int y_padding;
     int line;
     insertID activeInsertID;
-    DynamicArray_char text;
+    DynamicArray_uint32 utext;
     DynamicArray_ulong ID_table;
     DynamicArray_ulong author_table;
     DynamicArray_ulong charPos_table;
@@ -261,7 +261,7 @@ serialize_insert ( TextInsert *insert, DynamicArray_char *output )
     int i;
     for (i=0; i < insert->length; i++)
     {
-        addToDynamicArray_char( output, (insert->content)[i] );
+        append_base85_enc_uint32( (insert->content)[i], output);
     }
 
     Uint8 crc_value = crc8_0x97( output->array+start_length, output->used_length - start_length );
@@ -275,7 +275,7 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t 
 {
     Uint32 mix = base85_dec_uint32( string+1+5+5+5 );
     int insert_content_length = mix&0xFFFF;
-    size_t total_length = 1+5+5+5+5+insert_content_length+2;
+    size_t total_length = 1+5+5+5+5+insert_content_length*5+2;
 
     if (total_length > maxlength)
     {
@@ -303,11 +303,11 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t 
     insert.length = insert_content_length;
     insert.lock = (mix>>31)&1;
 
-    insert.content = malloc(insert.length);
+    insert.content = malloc(insert.length*sizeof(Uint32));
     int i;
     for (i=0; i<insert.length; i++)
     {
-        insert.content[i] = string[i+1+5+5+5+5];
+        insert.content[i] = base85_dec_uint32(string+i*5+1+5+5+5+5);
     }
 
     long old_insert_pos = getInsertByID(set, insert.selfID);
@@ -472,10 +472,10 @@ draw_cursor (int x, int y, Uint32 *pixels, FT_Face fontface)
 }
 
 int
-number_of_linewraps (char *text, int left_padding, FT_Face fontface)
+number_of_linewraps (Uint32 *text, int left_padding, FT_Face fontface)
 {
     int i = 0;
-    char character = text[0]; //for the first check
+    Uint32 character = text[0]; //for the first check
     int linewraps = 0;
     int x = left_padding;
     int word_length = 0;
@@ -512,8 +512,8 @@ number_of_linewraps (char *text, int left_padding, FT_Face fontface)
     return linewraps;
 }
 
-char *
-seek_to_line (char *text, int line)
+Uint32 *
+seek_to_line (Uint32 *text, int line)
 {
     if (line == 0)
     {
@@ -543,9 +543,9 @@ seek_to_line (char *text, int line)
 
 
 void
-draw_text (TextBuffer *buffer, char *text, Uint32 *pixels, char show_cursor, FT_Face fontface, int set_cursor_x, int set_cursor_y)
+draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, FT_Face fontface, int set_cursor_x, int set_cursor_y)
 {
-    char character;
+    Uint32 character;
     int x = buffer->x;
     int y = buffer->line_y + buffer->y_padding;
     int zero_x = x;
@@ -574,7 +574,7 @@ draw_text (TextBuffer *buffer, char *text, Uint32 *pixels, char show_cursor, FT_
             {
                 if (character == 32)
                 {
-                    char *lookahead = text+i;
+                    Uint32 *lookahead = text+i;
                     int lookahead_x = x;
                     error = FT_Load_Char(fontface, *lookahead, FT_LOAD_DEFAULT);
                     lookahead_x += fontface->glyph->advance.x / 64;
@@ -709,6 +709,71 @@ draw_text (TextBuffer *buffer, char *text, Uint32 *pixels, char show_cursor, FT_
 }
 
 void
+utf8_to_utf32 ( char *in, DynamicArray_ulong *out )
+{
+
+    int i;
+    Uint32 utfchar;
+    for (i=0; in[i]; i++)
+    {
+        if ( (in[i] & 0x80) == 0)
+        {
+            utfchar = in[i];
+        }
+
+        else if ( (in[i] & 0x40) == 0)
+        {
+            printf("Why is there a continuation byte here?\n");
+        }
+
+        else if ( (in[i] & 0x20) == 0)
+        {
+            utfchar = in[i] & 0x1f;
+            utfchar <<= 5;
+            i++;
+            utfchar += in[i];
+        }
+
+        else if ( (in[i] & 0x10) == 0)
+        {
+            utfchar = in[i] & 0x0f;
+            utfchar <<= 4;
+            i++;
+
+            utfchar += in[i];
+            utfchar <<= 8;
+            i++;
+
+            utfchar += in[i];
+        }
+
+        else if ( (in[i] & 0x08) == 0)
+        {
+            utfchar = in[i] & 0x07;
+            utfchar <<= 3;
+            i++;
+
+            utfchar += in[i];
+            utfchar <<= 8;
+            i++;
+
+            utfchar += in[i];
+            utfchar <<= 8;
+            i++;
+
+            utfchar += in[i];
+        }
+
+        else
+        {
+            printf("What is that fifth continuation doing here?? (This should never happen)\n");
+        }
+
+        addToDynamicArray_ulong(out, utfchar);
+    }
+}
+
+void
 quicksort (unsigned long *array, unsigned long min, unsigned long max)
 {
     if (min < max)
@@ -789,7 +854,7 @@ render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buf
             //stick the appropriate letter on the back
             if (current_insert->content[pos] != 127)
             {
-                addToDynamicArray_char(&buffer->text, current_insert->content[pos]);
+                addToDynamicArray_uint32(&buffer->utext, current_insert->content[pos]);
                 addToDynamicArray_ulong(&buffer->ID_table, current_insert->selfID);
                 addToDynamicArray_ulong(&buffer->author_table, current_insert->author);
                 addToDynamicArray_ulong(&buffer->charPos_table, pos);
@@ -806,12 +871,12 @@ void
 update_buffer (TextInsertSet *set, TextBuffer *buffer)
 {
     //update buffer
-    buffer->text.used_length = 0;
+    buffer->utext.used_length = 0;
     buffer->ID_table.used_length = 0;
     buffer->author_table.used_length = 0;
     buffer->charPos_table.used_length = 0;
     render_text(set, 0, 0, buffer);
-    addToDynamicArray_char(&buffer->text, 0);
+    addToDynamicArray_uint32(&buffer->utext, 0);
 }
 
 int
@@ -843,7 +908,7 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, network_data
     if (buffer->activeInsertID)
     {
         TextInsert *insert = set->array + getInsertByID(set, buffer->activeInsertID);
-        insert->content = realloc(insert->content, insert->length+1);
+        insert->content = realloc(insert->content, (insert->length+1)*4);
         insert->content[insert->length] = letter;
         insert->length++;
 
@@ -912,7 +977,7 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, char letter, network_data
         new_insert.charPos = charPos;
         new_insert.lock = 0;
         new_insert.length = 1;
-        new_insert.content = malloc(1);
+        new_insert.content = malloc(4);
         new_insert.content[0] = letter;
 
         addToTextInsertSet(set, new_insert);
@@ -1064,13 +1129,14 @@ int main (void)
     buffer.y_padding = 10;
     buffer.line = 0;
 
-    initDynamicArray_char(&buffer.text);
+    initDynamicArray_uint32(&buffer.utext);
     initDynamicArray_ulong(&buffer.ID_table);
     initDynamicArray_ulong(&buffer.author_table);
     initDynamicArray_ulong(&buffer.charPos_table);
 
+    //? why is there no update_buffer here?
     render_text(&set, 0, 0, &buffer);
-    addToDynamicArray_char(&buffer.text, 0);
+    addToDynamicArray_uint32(&buffer.utext, 0);
 
 
     //main loop
@@ -1123,7 +1189,7 @@ int main (void)
 
                         case SDLK_RIGHT:
                         {
-                            if (buffer.cursor < buffer.text.used_length-1)
+                            if (buffer.cursor < buffer.utext.used_length-1)
                             {
                                 buffer.cursor++;
                                 buffer.activeInsertID = 0;
@@ -1180,7 +1246,7 @@ int main (void)
 
                         else
                         {
-                            char *previous_line = seek_to_line(buffer.text.array, buffer.line-1);
+                            Uint32 *previous_line = seek_to_line(buffer.utext.array, buffer.line-1);
                             int offset = (number_of_linewraps(previous_line, buffer.x, fontface)+1) * line_height;
                             buffer.line--;
                             buffer.line_y -= offset;
@@ -1189,11 +1255,11 @@ int main (void)
 
                     else
                     {
-                        char *current_line = seek_to_line(buffer.text.array, buffer.line);
+                        Uint32 *current_line = seek_to_line(buffer.utext.array, buffer.line);
                         int current_line_height = (number_of_linewraps(current_line, buffer.x, fontface)+1) * line_height;
                         if (-buffer.line_y > current_line_height)
                         {
-                            char *next_line = seek_to_line(buffer.text.array, buffer.line+1);
+                            Uint32 *next_line = seek_to_line(buffer.utext.array, buffer.line+1);
                             if (next_line)
                             {
                                 buffer.line++;
@@ -1247,11 +1313,11 @@ int main (void)
 
         if (blink_timer < 128)
         {
-            draw_text(&buffer, buffer.text.array, pixels, 1, fontface, click_x, click_y);
+            draw_text(&buffer, buffer.utext.array, pixels, 1, fontface, click_x, click_y);
         }
         else
         {
-            draw_text(&buffer, buffer.text.array, pixels, 0, fontface, click_x, click_y);
+            draw_text(&buffer, buffer.utext.array, pixels, 0, fontface, click_x, click_y);
         }
         click_x = click_y = -1;
 
@@ -1341,9 +1407,9 @@ int main (void)
             free(base85_length);
 
             //check whether we have to take back the cursor after a deletion
-            if (buffer.cursor > buffer.text.used_length-1)//NOTE: if removing zero termination of buffer text, this -1 MUST be removed! (else, SEGFAULT....)
+            if (buffer.cursor > buffer.utext.used_length-1)//NOTE: if removing zero termination of buffer text, this -1 MUST be removed! (else, SEGFAULT....)
             {
-                buffer.cursor = buffer.text.used_length-1;
+                buffer.cursor = buffer.utext.used_length-1;
             }
         }
 
@@ -1375,7 +1441,7 @@ int main (void)
     SDL_DestroyWindow(window);
     SDL_Quit();
 
-    free(buffer.text.array);
+    free(buffer.utext.array);
     free(buffer.ID_table.array);
     free(buffer.charPos_table.array);
 

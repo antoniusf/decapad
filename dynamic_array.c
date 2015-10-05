@@ -60,6 +60,40 @@ concatDynamicArrays_ulong ( DynamicArray_ulong *array1, DynamicArray_ulong *arra
     return 0;
 }
 
+//Uint32
+
+int
+initDynamicArray_uint32 ( DynamicArray_uint32 *array )
+{
+    array->used_length = 0;
+    array->array = malloc(4*sizeof(Uint32));
+    if (!array->array)
+    {
+        printf("Error in initDynamicArray_uint32: malloc didn't work.\n");
+        return -1;
+    }
+    array->allocated_length = 4;
+    return 0;
+}
+
+int
+addToDynamicArray_uint32 ( DynamicArray_uint32 *array, Uint32 item )
+{
+    if (array->used_length == array->allocated_length)
+    {
+        array->array = realloc(array->array, (array->allocated_length)*2*sizeof(Uint32));
+        if ( array->array == NULL )
+        {
+            printf("Error in addToDynamicArray_uint32: realloc didn't work.\n");
+            return -1;
+        }
+        array->allocated_length *= 2;
+    }
+    array->array[array->used_length] = item;
+    array->used_length++;
+    return 0;
+}
+
 //char
 
 int

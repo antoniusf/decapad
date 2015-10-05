@@ -22,7 +22,7 @@ struct TextInsert
     Uint8 charPos;
     char lock;
     Uint8 length;
-    char *content;
+    Uint32 *content;
 };
 typedef struct TextInsert TextInsert;
 

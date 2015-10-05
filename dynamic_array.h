@@ -1,5 +1,6 @@
 #ifndef DYNAMIC_ARRAY_H
 #define DYNAMIC_ARRAY_H
+#include "main.h"
 
 typedef struct DynamicArray_ulong
 {
@@ -16,6 +17,19 @@ addToDynamicArray_ulong ( DynamicArray_ulong *array, unsigned long item );
 
 int
 concatDynamicArrays_ulong ( DynamicArray_ulong *array1, DynamicArray_ulong *array2 ); //result will be in array1
+
+typedef struct DynamicArray_uint32
+{
+    Uint32 *array;
+    unsigned int used_length;
+    unsigned int allocated_length;
+} DynamicArray_uint32;
+
+int
+initDynamicArray_uint32 ( DynamicArray_uint32 *array );
+
+int
+addToDynamicArray_uint32 ( DynamicArray_uint32 *array, Uint32 item );
 
 typedef struct DynamicArray_char
 {
