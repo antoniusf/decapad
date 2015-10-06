@@ -1142,7 +1142,7 @@ int main (void)
 
     //main loop
     int quit=0;
-    //int i;
+    int i;
     //int x, y;
     int click_x, click_y;
     click_x = click_y = -1;
@@ -1167,8 +1167,11 @@ int main (void)
                     DynamicArray_uint32 utf32_encoded;
                     initDynamicArray_uint32(&utf32_encoded);
                     utf8_to_utf32(e.text.text, &utf32_encoded);
-                    //TODO: multi-letter insert
-                    insert_letter(&set, &buffer, utf32_encoded.array[0], &network);
+                    //TODO (maybe): more efficient multi-letter insert
+                    for (i=0; i<utf32_encoded.used_length; i++)
+                    {
+                        insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
+                    }
                     blink_timer = 0;
 
                     update_buffer(&set, &buffer);
@@ -1207,6 +1210,28 @@ int main (void)
                             {
                                 buffer.cursor--;
                                 buffer.activeInsertID = 0;
+                            }
+                        } break;
+
+                        case SDLK_v:
+                        {
+                            if (e.key.keysym.mod & KMOD_CTRL)
+                            {
+                                char *clipboard_content = SDL_GetClipboardText();
+                                if (clipboard_content)
+                                {
+                                    DynamicArray_uint32 utf32_encoded;
+                                    initDynamicArray_uint32(&utf32_encoded);
+                                    utf8_to_utf32(clipboard_content, &utf32_encoded);
+                                    for (i=0; i<utf32_encoded.used_length; i++)
+                                    {
+                                        insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
+                                    }
+                                    blink_timer = 0;
+
+                                    update_buffer(&set, &buffer);
+                                    free(clipboard_content);
+                                }
                             }
                         } break;
 
@@ -1451,7 +1476,6 @@ int main (void)
     free(buffer.ID_table.array);
     free(buffer.charPos_table.array);
 
-    int i;
     for (i=0; i<set.used_length; i++)
     {
         free( set.array[i].content );
