@@ -396,8 +396,13 @@ send_insert ( TextInsert *insert, network_data *network )
     initDynamicArray_char(&message);
     initDynamicArray_char(&messagelength);
 
-    addStringToDynamicArray_char(&message, "*****data");
+    addStringToDynamicArray_char(&message, "[len]data");
     serialize_insert(insert, &message);
+
+    Uint8 crc_value = crc8_0x97(&message.array[5], message.length-5);
+    addStringToDynamicArray_char(&message, "..");
+    base32_enc_crc(crc_value, &message.array[message.length-2]);
+
     send_data(message.array, message.length, network);
 
     //enqueue insert pointer if not alread in queue
@@ -1402,16 +1407,19 @@ int main (void)
 
                 else if (string_compare(input, "data", 4))
                 {
-                    size_t insert_length;
-                    Sint64 insert_ID = unserialize_insert(&set, input+4, length-4, &insert_length);
-                    update_buffer(&set, &buffer);
-
-                    if(insert_ID >= 0)
+                    if (check_base32_crc8_0x97(input, length) == 0)
                     {
-                        //ACK
-                        char ack[14] = "*****ack *****";
-                        base85_enc_uint32(insert_ID, ack+9);
-                        send_data(ack, 14, &network);
+                        size_t insert_length;
+                        Sint64 insert_ID = unserialize_insert(&set, input+4, length-4, &insert_length);
+                        update_buffer(&set, &buffer);
+
+                        if(insert_ID >= 0)
+                        {
+                            //ACK
+                            char ack[14] = "*****ack *****";
+                            base85_enc_uint32(insert_ID, ack+9);
+                            send_data(ack, 14, &network);
+                        }
                     }
                 }
 
