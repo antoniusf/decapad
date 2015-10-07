@@ -908,18 +908,24 @@ int
 insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_data *network)
 {
 
+    TextInsert *active_insert = NULL;
     if (buffer->activeInsertID)
     {
-        TextInsert *insert = set->array + getInsertByID(set, buffer->activeInsertID);
-        insert->content = realloc(insert->content, (insert->length+1)*4);
-        insert->content[insert->length] = letter;
-        insert->length++;
+        active_insert = set->array + getInsertByID(set, buffer->activeInsertID);
+    }
 
-        send_insert(insert, network);
+    if ( (buffer->activeInsertID) && (active_insert->length < 255) )
+    {
+        active_insert->content = realloc(active_insert->content, (active_insert->length+1)*4);
+        active_insert->content[active_insert->length] = letter;
+        active_insert->length++;
+
+        send_insert(active_insert, network);
     }
 
     else
     {
+        buffer->activeInsertID = 0;
 
         int pos = buffer->cursor;
         Uint32 insert_ID;
