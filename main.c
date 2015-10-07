@@ -250,9 +250,6 @@ base85_dec_uint32 ( char *input )
 void
 serialize_insert ( TextInsert *insert, DynamicArray_char *output )
 {
-    int start_length = output->length;
-
-    addToDynamicArray_char( output, 73 );// I for insert
 
     append_base85_enc_uint32( insert->selfID, output );
     append_base85_enc_uint32( insert->parentID, output );
@@ -265,51 +262,54 @@ serialize_insert ( TextInsert *insert, DynamicArray_char *output )
     {
         append_base85_enc_uint32( (insert->content)[i], output);
     }
-
-    Uint8 crc_value = crc8_0x97( output->array+start_length, output->length - start_length );
-    addToDynamicArray_char(output, (crc_value>>4) + 65);
-    addToDynamicArray_char(output, (crc_value&0x0F) + 65);
-    //printf("serialize crc: %i\n", crc_value);
 }
 
 Sint64
 unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t *return_insert_length)
 {
-    Uint32 mix = base85_dec_uint32( string+1+5+5+5 );
-    int insert_content_length = mix&0xFFFF;
-    size_t total_length = 1+5+5+5+5+insert_content_length*5+2;
 
-    if (total_length > maxlength)
-    {
-        printf("Insert unserialization failed: invalid length.\n");
-        return -1;
-    }
+    int total_length = 0;
 
-    Uint8 checksum = ( (string[total_length-2] - 65) << 4) + (string[total_length-1] - 65);
-    //printf("unserialize crc: %i\n", checksum);
-    string[total_length-2] = checksum;
-    if ( check_crc8_0x97( string, total_length-1 ) == -1 )
+    if (maxlength < 20)
     {
-        printf("Insert unserialization failed: invalid checksum.\n");
+        printf("Serialized insert string is definitely too short, cannot even read the header!\n");
         return -1;
     }
 
     TextInsert insert;
 
-    insert.selfID = base85_dec_uint32( string+1 );
+    insert.selfID = base85_dec_uint32(string);
+    string += 5;
+    total_length += 5;
 
-    insert.parentID = base85_dec_uint32( string+1+5 );
-    insert.author = base85_dec_uint32(string+1+5+5);
+    insert.parentID = base85_dec_uint32(string);
+    string += 5;
+    total_length += 5;
 
+    insert.author = base85_dec_uint32(string);
+    string += 5;
+    total_length += 5;
+
+    Uint32 mix = base85_dec_uint32(string);
     insert.charPos = (mix>>16)&0xFFFF;
-    insert.length = insert_content_length;
+    insert.length = mix&0xFFFF;
     insert.lock = (mix>>31)&1;
+    string += 5;
+    total_length += 5;
+
+    total_length += insert.length;
+
+    if (maxlength < total_length)
+    {
+        printf("Serialized insert string is too short for insert content.\n");
+        return -1;
+    }
 
     insert.content = malloc(insert.length*sizeof(Uint32));
     int i;
     for (i=0; i<insert.length; i++)
     {
-        insert.content[i] = base85_dec_uint32(string+i*5+1+5+5+5+5);
+        insert.content[i] = base85_dec_uint32(string+i*5);
     }
 
     long old_insert_pos = getInsertByID(set, insert.selfID);
