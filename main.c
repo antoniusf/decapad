@@ -31,7 +31,7 @@ struct TextBuffer
     int y_padding;
     int line;
     insertID activeInsertID;
-    DynamicArray_uint32 utext;
+    DynamicArray_uint32 text;
     DynamicArray_ulong ID_table;
     DynamicArray_ulong author_table;
     DynamicArray_ulong charPos_table;
@@ -862,7 +862,7 @@ render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buf
             //stick the appropriate letter on the back
             if (current_insert->content[pos] != 127)
             {
-                addToDynamicArray_uint32(&buffer->utext, current_insert->content[pos]);
+                addToDynamicArray_uint32(&buffer->text, current_insert->content[pos]);
                 addToDynamicArray_ulong(&buffer->ID_table, current_insert->selfID);
                 addToDynamicArray_ulong(&buffer->author_table, current_insert->author);
                 addToDynamicArray_ulong(&buffer->charPos_table, pos);
@@ -879,12 +879,12 @@ void
 update_buffer (TextInsertSet *set, TextBuffer *buffer)
 {
     //update buffer
-    buffer->utext.length = 0;
+    buffer->text.length = 0;
     buffer->ID_table.length = 0;
     buffer->author_table.length = 0;
     buffer->charPos_table.length = 0;
     render_text(set, 0, 0, buffer);
-    addToDynamicArray_uint32(&buffer->utext, 0);
+    addToDynamicArray_uint32(&buffer->text, 0);
 }
 
 int
@@ -1137,14 +1137,14 @@ int main (void)
     buffer.y_padding = 10;
     buffer.line = 0;
 
-    initDynamicArray_uint32(&buffer.utext);
+    initDynamicArray_uint32(&buffer.text);
     initDynamicArray_ulong(&buffer.ID_table);
     initDynamicArray_ulong(&buffer.author_table);
     initDynamicArray_ulong(&buffer.charPos_table);
 
     //? why is there no update_buffer here?
     render_text(&set, 0, 0, &buffer);
-    addToDynamicArray_uint32(&buffer.utext, 0);
+    addToDynamicArray_uint32(&buffer.text, 0);
 
 
     //main loop
@@ -1204,7 +1204,7 @@ int main (void)
 
                         case SDLK_RIGHT:
                         {
-                            if (buffer.cursor < buffer.utext.length-1)
+                            if (buffer.cursor < buffer.text.length-1)
                             {
                                 buffer.cursor++;
                                 buffer.activeInsertID = 0;
@@ -1283,7 +1283,7 @@ int main (void)
 
                         else
                         {
-                            Uint32 *previous_line = seek_to_line(buffer.utext.array, buffer.line-1);
+                            Uint32 *previous_line = seek_to_line(buffer.text.array, buffer.line-1);
                             int offset = (number_of_linewraps(previous_line, buffer.x, fontface)+1) * line_height;
                             buffer.line--;
                             buffer.line_y -= offset;
@@ -1292,11 +1292,11 @@ int main (void)
 
                     else
                     {
-                        Uint32 *current_line = seek_to_line(buffer.utext.array, buffer.line);
+                        Uint32 *current_line = seek_to_line(buffer.text.array, buffer.line);
                         int current_line_height = (number_of_linewraps(current_line, buffer.x, fontface)+1) * line_height;
                         if (-buffer.line_y > current_line_height)
                         {
-                            Uint32 *next_line = seek_to_line(buffer.utext.array, buffer.line+1);
+                            Uint32 *next_line = seek_to_line(buffer.text.array, buffer.line+1);
                             if (next_line)
                             {
                                 buffer.line++;
@@ -1353,11 +1353,11 @@ int main (void)
 
         if (blink_timer < 128)
         {
-            draw_text(&buffer, buffer.utext.array, pixels, 1, fontface, click_x, click_y);
+            draw_text(&buffer, buffer.text.array, pixels, 1, fontface, click_x, click_y);
         }
         else
         {
-            draw_text(&buffer, buffer.utext.array, pixels, 0, fontface, click_x, click_y);
+            draw_text(&buffer, buffer.text.array, pixels, 0, fontface, click_x, click_y);
         }
         click_x = click_y = -1;
 
@@ -1452,9 +1452,9 @@ int main (void)
             free(base85_length);
 
             //check whether we have to take back the cursor after a deletion
-            if (buffer.cursor > buffer.utext.length-1)//NOTE: if removing zero termination of buffer text, this -1 MUST be removed! (else, SEGFAULT....)
+            if (buffer.cursor > buffer.text.length-1)//NOTE: if removing zero termination of buffer text, this -1 MUST be removed! (else, SEGFAULT....)
             {
-                buffer.cursor = buffer.utext.length-1;
+                buffer.cursor = buffer.text.length-1;
             }
         }
 
@@ -1500,7 +1500,7 @@ int main (void)
     SDL_DestroyWindow(window);
     SDL_Quit();
 
-    free(buffer.utext.array);
+    free(buffer.text.array);
     free(buffer.ID_table.array);
     free(buffer.charPos_table.array);
 
