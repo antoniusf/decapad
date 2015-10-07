@@ -179,10 +179,12 @@ base32_enc_crc ( Uint8 crc_value, char *output )
 }
 
 Uint8
-base32_dec_crc ( char *data )
+check_base32_crc8_0x97 ( char *data, size_t total_length )
+//NOTE: data *will* be modified to replace the second-to-last char with the decoded crc value for checking.
 {
-    Uint8 crc_value = ( (data[0]-65)<<4 ) + (data[1]-65);
-    return crc_value;
+    Uint8 crc_value = ( (data[total_length-2]-65)<<4 ) + (data[total_length-1]-65);
+    data[total_length-2] = crc_value;
+    return check_crc8_0x97(data, total_length-1);
 }
 
 void
@@ -1376,9 +1378,12 @@ int main (void)
 
                 if (string_compare(input, "Init", 4))
                 {
-                    Uint8 crc_value = base32_dec_crc(input+14);
-                    input[14] = crc_value;
-                    if (check_crc8_0x97(input, 4+5+5+1) == 0)
+                    if (length != 4+5+5+2)
+                    {
+                        printf("Invalid data length!\n");
+                    }
+
+                    if (check_base32_crc8_0x97(input, length) == 0)
                     {
                         author_ID = ID_start = base85_dec_uint32(input+4);
                         ID_end = base85_dec_uint32(input+9);
