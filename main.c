@@ -1229,9 +1229,7 @@ int main (void)
                                     {
                                         insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
                                     }
-                                    blink_timer = 0;
 
-                                    update_buffer(&set, &buffer);
                                     free(clipboard_content);
                                 }
                             }
@@ -1246,7 +1244,6 @@ int main (void)
                     blink_timer = 0;
 
                     update_buffer(&set, &buffer);
-                    //printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.length);
 
                 } break;
 
