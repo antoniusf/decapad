@@ -559,145 +559,140 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
     int error;
     int height = (int) fontface->size->metrics.height / 64;
     y += height;
-    int current_line = 0;
+
+    Uint32 *start = seek_to_line(text, buffer->line);
+    if (!start)
+    {
+        printf("draw_text says: line number too high!\n");
+        return;
+    }
 
     int i = 0;
-    while ((character=text[i]))
+    while ((character=start[i]))
     {
-        if (current_line >= buffer->line)
-        {
-            int linewrap = 0;
+        int linewrap = 0;
 
-            if (character == 10) {
-                linewrap = 1;
+        if (character == 10) {
+            linewrap = 1;
 
-                if ( show_cursor == 1 && i == buffer->cursor )
-                {
-                    draw_cursor(x, y, pixels, fontface);
-                }
-            }
-
-            else
+            if ( show_cursor == 1 && i == buffer->cursor )
             {
-                if (character == 32)
-                {
-                    Uint32 *lookahead = text+i;
-                    int lookahead_x = x;
-                    error = FT_Load_Char(fontface, *lookahead, FT_LOAD_DEFAULT);
-                    lookahead_x += fontface->glyph->advance.x / 64;
-                    lookahead++;
-
-                    while ( (*lookahead != 0) && (*lookahead != 32) && (*lookahead != 10))
-                    {
-                        error = FT_Load_Char(fontface, *lookahead, FT_LOAD_RENDER);
-                        lookahead_x += fontface->glyph->advance.x / 64;
-                        lookahead++;
-
-                        if (lookahead_x > window_width)
-                        {
-                            linewrap = 1;
-                            break;
-                        }
-                    }
-                    if (lookahead_x > window_width)
-                    {
-                        linewrap = 1;
-                    }
-                }
-
-                error = FT_Load_Char( fontface, character, FT_LOAD_RENDER );
-
-                FT_Bitmap bitmap = fontface->glyph->bitmap;
-
-                if ( bitmap.pixel_mode != FT_PIXEL_MODE_GRAY )
-                {
-                    printf("Not the right Freetype glyph bitmap pixel mode! Sorry, it ran on my computer...\n");
-                    return;
-                }
-
-                //copy glyph into pixel array
-
-                int target_x, target_y;
-                target_x = x + fontface->glyph->bitmap_left;
-                target_y = y - fontface->glyph->bitmap_top;
-
-                if ( bitmap.pitch < 0 )
-                {
-                    printf("Freetype glyph bitmap pitch is negative. Surely wasn't expecting that...\n");
-                    return;
-                }
-
-                int row;
-                int col;
-                unsigned char *glyhp_buffer = (unsigned char *) (bitmap.buffer);
-                for ( row = 0; row < bitmap.rows; row++ )
-                {
-                    for ( col = 0; col < bitmap.width; col++ )
-                    {
-                        if ( (target_y+row < window_height) && (target_y+row > 0) && (target_x+col < window_width) && (target_x+col > 0) )
-                        {
-                            Uint32 color = *( glyhp_buffer + row * (bitmap.pitch) + col );
-                            SETPIXEL(target_x+col, target_y+row, (color<<24)+(color<<16)+(color<<8)+255);
-                        }
-                    }
-                }
-
-                int advance = fontface->glyph->advance.x >> 6;
-
-                //draw underline
-                Uint32 underline_color = (0xFF<<16) + 0xFF;
-                if (buffer->author_table.array[i] != author_ID)
-                {
-                    underline_color += 0xFF<<24;
-                }
-
-                for (col = 0; col < advance; col++)
-                {
-                    if ( (y+2 < window_height) && (y+1 >= 0) && (target_x+col < window_width) && (target_x+col >= 0) )
-                    {
-                        SETPIXEL(target_x+col, y+1, underline_color);
-                        SETPIXEL(target_x+col, y+2, underline_color);
-                    }
-                }
-
-                if ( show_cursor == 1 && i == buffer->cursor )
-                {
-                    draw_cursor(x, y, pixels, fontface);
-                }
-
-                x += advance;
-
-                if ( (set_cursor_x >= 0) && (set_cursor_x <= x-(advance>>1)) && (set_cursor_y <= y) )
-                {
-                    buffer->cursor = i;
-                    set_cursor_x = set_cursor_y = -1; //click handled
-                }
-
-            }
-
-            if (linewrap)
-            {
-                if ( (set_cursor_x >= 0) && (set_cursor_y <= y) ) //end of line click cursor positioning is not handled otherwise
-                {
-                    buffer->cursor = i;
-                    set_cursor_x = set_cursor_y = -1;
-                }
-
-                x = zero_x;
-                y += height;
-
-                if (y-height > window_height)
-                {
-                    break;
-                }
+                draw_cursor(x, y, pixels, fontface);
             }
         }
 
         else
         {
-            if (character == 10)
+            if (character == 32)
             {
-                current_line += 1;
+                Uint32 *lookahead = start+i;
+                int lookahead_x = x;
+                error = FT_Load_Char(fontface, *lookahead, FT_LOAD_DEFAULT);
+                lookahead_x += fontface->glyph->advance.x / 64;
+                lookahead++;
+
+                while ( (*lookahead != 0) && (*lookahead != 32) && (*lookahead != 10))
+                {
+                    error = FT_Load_Char(fontface, *lookahead, FT_LOAD_RENDER);
+                    lookahead_x += fontface->glyph->advance.x / 64;
+                    lookahead++;
+
+                    if (lookahead_x > window_width)
+                    {
+                        linewrap = 1;
+                        break;
+                    }
+                }
+                if (lookahead_x > window_width)
+                {
+                    linewrap = 1;
+                }
+            }
+
+            error = FT_Load_Char( fontface, character, FT_LOAD_RENDER );
+
+            FT_Bitmap bitmap = fontface->glyph->bitmap;
+
+            if ( bitmap.pixel_mode != FT_PIXEL_MODE_GRAY )
+            {
+                printf("Not the right Freetype glyph bitmap pixel mode! Sorry, it ran on my computer...\n");
+                return;
+            }
+
+            //copy glyph into pixel array
+
+            int target_x, target_y;
+            target_x = x + fontface->glyph->bitmap_left;
+            target_y = y - fontface->glyph->bitmap_top;
+
+            if ( bitmap.pitch < 0 )
+            {
+                printf("Freetype glyph bitmap pitch is negative. Surely wasn't expecting that...\n");
+                return;
+            }
+
+            int row;
+            int col;
+            unsigned char *glyhp_buffer = (unsigned char *) (bitmap.buffer);
+            for ( row = 0; row < bitmap.rows; row++ )
+            {
+                for ( col = 0; col < bitmap.width; col++ )
+                {
+                    if ( (target_y+row < window_height) && (target_y+row > 0) && (target_x+col < window_width) && (target_x+col > 0) )
+                    {
+                        Uint32 color = *( glyhp_buffer + row * (bitmap.pitch) + col );
+                        SETPIXEL(target_x+col, target_y+row, (color<<24)+(color<<16)+(color<<8)+255);
+                    }
+                }
+            }
+
+            int advance = fontface->glyph->advance.x >> 6;
+
+            //draw underline
+            Uint32 underline_color = (0xFF<<16) + 0xFF;
+            if (buffer->author_table.array[i] != author_ID)
+            {
+                underline_color += 0xFF<<24;
+            }
+
+            for (col = 0; col < advance; col++)
+            {
+                if ( (y+2 < window_height) && (y+1 >= 0) && (target_x+col < window_width) && (target_x+col >= 0) )
+                {
+                    SETPIXEL(target_x+col, y+1, underline_color);
+                    SETPIXEL(target_x+col, y+2, underline_color);
+                }
+            }
+
+            if ( show_cursor == 1 && i == buffer->cursor )
+            {
+                draw_cursor(x, y, pixels, fontface);
+            }
+
+            x += advance;
+
+            if ( (set_cursor_x >= 0) && (set_cursor_x <= x-(advance>>1)) && (set_cursor_y <= y) )
+            {
+                buffer->cursor = i;
+                set_cursor_x = set_cursor_y = -1; //click handled
+            }
+
+        }
+
+        if (linewrap)
+        {
+            if ( (set_cursor_x >= 0) && (set_cursor_y <= y) ) //end of line click cursor positioning is not handled otherwise
+            {
+                buffer->cursor = i;
+                set_cursor_x = set_cursor_y = -1;
+            }
+
+            x = zero_x;
+            y += height;
+
+            if (y-height > window_height)
+            {
+                break;
             }
         }
 
