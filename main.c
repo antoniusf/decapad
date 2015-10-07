@@ -567,8 +567,9 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
         return;
     }
 
-    int i = 0;
-    while ((character=start[i]))
+
+    int i = start-text;
+    while ((character=text[i]))
     {
         int linewrap = 0;
 
@@ -585,7 +586,7 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
         {
             if (character == 32)
             {
-                Uint32 *lookahead = start+i;
+                Uint32 *lookahead = text+i;
                 int lookahead_x = x;
                 error = FT_Load_Char(fontface, *lookahead, FT_LOAD_DEFAULT);
                 lookahead_x += fontface->glyph->advance.x / 64;
