@@ -1327,6 +1327,9 @@ int main (void)
             }
         }
 
+
+        //drawing
+
         int byte_pitch;
         SDL_LockTexture(texture, NULL, &pixels, &byte_pitch);
         pitch = byte_pitch/4;
@@ -1357,9 +1360,7 @@ int main (void)
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
         
-        blink_timer+=9;
-        resend_timer += 30;
-        SDL_Delay(30);
+
 
         //check FIFO
         {
@@ -1466,6 +1467,12 @@ int main (void)
                 send_init(&network);
             }
         }
+
+
+        blink_timer+=9;
+        resend_timer += 30;
+        SDL_Delay(30);//TODO: how big should the delay be?
+
     }
 
     int savefile = open("/tmp/decasave", O_WRONLY|O_CREAT, 0777);
