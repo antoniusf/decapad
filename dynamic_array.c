@@ -8,7 +8,7 @@
 int
 initDynamicArray_ulong ( DynamicArray_ulong *array )
 {
-    array->used_length = 0;
+    array->length = 0;
     array->array = malloc(4*sizeof(unsigned long));
     if (!array->array)
     {
@@ -22,7 +22,7 @@ initDynamicArray_ulong ( DynamicArray_ulong *array )
 int
 addToDynamicArray_ulong ( DynamicArray_ulong *array, unsigned long item )
 {
-    if (array->used_length == array->allocated_length)
+    if (array->length == array->allocated_length)
     {
         array->array = realloc(array->array, (array->allocated_length)*2*sizeof(unsigned long));
         if ( array->array == NULL )
@@ -32,15 +32,15 @@ addToDynamicArray_ulong ( DynamicArray_ulong *array, unsigned long item )
         }
         array->allocated_length *= 2;
     }
-    array->array[array->used_length] = item;
-    array->used_length++;
+    array->array[array->length] = item;
+    array->length++;
     return 0;
 }
 
 int
 concatDynamicArrays_ulong ( DynamicArray_ulong *array1, DynamicArray_ulong *array2 ) //result will be in array1
 {
-    unsigned int new_length = array1->used_length + array2->used_length;
+    unsigned int new_length = array1->length + array2->length;
     if (new_length > array1->allocated_length)
     {
         array1->array = realloc(array1->array, new_length);
@@ -52,11 +52,11 @@ concatDynamicArrays_ulong ( DynamicArray_ulong *array1, DynamicArray_ulong *arra
     }
     
     unsigned int i;
-    for (i=0; i < array2->used_length; i++)
+    for (i=0; i < array2->length; i++)
     {
-        array1[array1->used_length + i] = array2[i];
+        array1[array1->length + i] = array2[i];
     }
-    array1->used_length = new_length;
+    array1->length = new_length;
     return 0;
 }
 
@@ -65,7 +65,7 @@ concatDynamicArrays_ulong ( DynamicArray_ulong *array1, DynamicArray_ulong *arra
 int
 initDynamicArray_uint32 ( DynamicArray_uint32 *array )
 {
-    array->used_length = 0;
+    array->length = 0;
     array->array = malloc(4*sizeof(Uint32));
     if (!array->array)
     {
@@ -79,7 +79,7 @@ initDynamicArray_uint32 ( DynamicArray_uint32 *array )
 int
 addToDynamicArray_uint32 ( DynamicArray_uint32 *array, Uint32 item )
 {
-    if (array->used_length == array->allocated_length)
+    if (array->length == array->allocated_length)
     {
         array->array = realloc(array->array, (array->allocated_length)*2*sizeof(Uint32));
         if ( array->array == NULL )
@@ -89,8 +89,8 @@ addToDynamicArray_uint32 ( DynamicArray_uint32 *array, Uint32 item )
         }
         array->allocated_length *= 2;
     }
-    array->array[array->used_length] = item;
-    array->used_length++;
+    array->array[array->length] = item;
+    array->length++;
     return 0;
 }
 
@@ -99,7 +99,7 @@ addToDynamicArray_uint32 ( DynamicArray_uint32 *array, Uint32 item )
 int
 initDynamicArray_char ( DynamicArray_char *array )
 {
-    array->used_length = 0;
+    array->length = 0;
     array->array = malloc(4*sizeof(char));
     if (!array->array)
     {
@@ -113,7 +113,7 @@ initDynamicArray_char ( DynamicArray_char *array )
 int
 addToDynamicArray_char ( DynamicArray_char *array, char item )
 {
-    if (array->used_length == array->allocated_length)
+    if (array->length == array->allocated_length)
     {
         array->array = realloc(array->array, (array->allocated_length)*2*sizeof(char));
         if ( array->array == NULL )
@@ -123,8 +123,8 @@ addToDynamicArray_char ( DynamicArray_char *array, char item )
         }
         array->allocated_length *= 2;
     }
-    array->array[array->used_length] = item;
-    array->used_length++;
+    array->array[array->length] = item;
+    array->length++;
     return 0;
 }
 
@@ -146,7 +146,7 @@ addStringToDynamicArray_char ( DynamicArray_char *array, char *string )
 int
 concatDynamicArrays_char ( DynamicArray_char *array1, DynamicArray_char *array2 ) //result will be in array1
 {
-    unsigned int new_length = array1->used_length + array2->used_length;
+    unsigned int new_length = array1->length + array2->length;
     if (new_length > array1->allocated_length)
     {
         array1->array = realloc(array1->array, new_length);
@@ -158,11 +158,11 @@ concatDynamicArrays_char ( DynamicArray_char *array1, DynamicArray_char *array2 
     }
     
     unsigned int i;
-    for (i=0; i < array2->used_length; i++)
+    for (i=0; i < array2->length; i++)
     {
-        array1[array1->used_length + i] = array2[i];
+        array1[array1->length + i] = array2[i];
     }
-    array1->used_length = new_length;
+    array1->length = new_length;
     return 0;
 }
 
@@ -171,7 +171,7 @@ concatDynamicArrays_char ( DynamicArray_char *array1, DynamicArray_char *array2 
 int
 initTextInsertSet ( TextInsertSet *array )
 {
-    array->used_length = 0;
+    array->length = 0;
     array->array = malloc(4*sizeof(TextInsert));
     if (!array->array)
     {
@@ -185,7 +185,7 @@ initTextInsertSet ( TextInsertSet *array )
 int
 addToTextInsertSet ( TextInsertSet *array, TextInsert item )
 {
-    if (array->used_length == array->allocated_length)
+    if (array->length == array->allocated_length)
     {
         array->array = realloc(array->array, (array->allocated_length)*2*sizeof(TextInsert));
         if ( array->array == NULL )
@@ -195,15 +195,15 @@ addToTextInsertSet ( TextInsertSet *array, TextInsert item )
         }
         array->allocated_length *= 2;
     }
-    array->array[array->used_length] = item;
-    array->used_length++;
+    array->array[array->length] = item;
+    array->length++;
     return 0;
 }
 
 int
 concatTextInsertSets ( TextInsertSet *array1, TextInsertSet *array2 ) //result will be in array1
 {
-    unsigned int new_length = array1->used_length + array2->used_length;
+    unsigned int new_length = array1->length + array2->length;
     if (new_length > array1->allocated_length)
     {
         array1->array = realloc(array1->array, new_length);
@@ -215,11 +215,11 @@ concatTextInsertSets ( TextInsertSet *array1, TextInsertSet *array2 ) //result w
     }
     
     unsigned int i;
-    for (i=0; i < array2->used_length; i++)
+    for (i=0; i < array2->length; i++)
     {
-        array1[array1->used_length + i] = array2[i];
+        array1[array1->length + i] = array2[i];
     }
-    array1->used_length = new_length;
+    array1->length = new_length;
     return 0;
 }
 
@@ -230,7 +230,7 @@ concatTextInsertSets ( TextInsertSet *array1, TextInsertSet *array2 ) //result w
 int
 initDynamicArray_pointer ( DynamicArray_pointer *array )
 {
-    array->used_length = 0;
+    array->length = 0;
     array->array = malloc(4*sizeof(void *));
     if (!array->array)
     {
@@ -244,7 +244,7 @@ initDynamicArray_pointer ( DynamicArray_pointer *array )
 int
 addToDynamicArray_pointer ( DynamicArray_pointer *array, void *item )
 {
-    if (array->used_length == array->allocated_length)
+    if (array->length == array->allocated_length)
     {
         array->array = realloc(array->array, (array->allocated_length)*2*sizeof(void *));
         if ( array->array == NULL )
@@ -254,7 +254,7 @@ addToDynamicArray_pointer ( DynamicArray_pointer *array, void *item )
         }
         array->allocated_length *= 2;
     }
-    array->array[array->used_length] = item;
-    array->used_length++;
+    array->array[array->length] = item;
+    array->length++;
     return 0;
 }

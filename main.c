@@ -98,7 +98,7 @@ long //so we can have all the unsigned ints *and* return -1 on not finding an in
 getInsertByID (TextInsertSet *set, Uint32 selfID)
 {
     unsigned int i;
-    for (i=0; i<set->used_length; i++)
+    for (i=0; i<set->length; i++)
     {
         if ((set->array)[i].selfID == selfID)
         {
@@ -248,7 +248,7 @@ base85_dec_uint32 ( char *input )
 void
 serialize_insert ( TextInsert *insert, DynamicArray_char *output )
 {
-    int start_length = output->used_length;
+    int start_length = output->length;
 
     addToDynamicArray_char( output, 73 );// I for insert
 
@@ -264,7 +264,7 @@ serialize_insert ( TextInsert *insert, DynamicArray_char *output )
         append_base85_enc_uint32( (insert->content)[i], output);
     }
 
-    Uint8 crc_value = crc8_0x97( output->array+start_length, output->used_length - start_length );
+    Uint8 crc_value = crc8_0x97( output->array+start_length, output->length - start_length );
     addToDynamicArray_char(output, (crc_value>>4) + 65);
     addToDynamicArray_char(output, (crc_value&0x0F) + 65);
     //printf("serialize crc: %i\n", crc_value);
@@ -396,12 +396,12 @@ send_insert ( TextInsert *insert, network_data *network )
 
     addStringToDynamicArray_char(&message, "*****data");
     serialize_insert(insert, &message);
-    send_data(message.array, message.used_length, network);
+    send_data(message.array, message.length, network);
 
     //enqueue insert pointer if not alread in queue
     int i;
     int enqueued = 0;
-    for (i=0; i < network->send_queue.used_length; i++)
+    for (i=0; i < network->send_queue.length; i++)
     {
         if ( network->send_queue.array[i] == insert->selfID )
         {
@@ -414,15 +414,15 @@ send_insert ( TextInsert *insert, network_data *network )
     if (!enqueued)
     {
         printf("Enqueueing insert %lu at %lu.\n", insert->selfID, insert);
-        if (network->send_queue_free_slots.used_length == 0)
+        if (network->send_queue_free_slots.length == 0)
         {
             addToDynamicArray_ulong(&network->send_queue, insert->selfID);
         }
         else
         {
             //pop a free slot and fill it with the insert ID
-            insertID *free_slot = network->send_queue_free_slots.array[network->send_queue_free_slots.used_length - 1];
-            network->send_queue_free_slots.used_length--;
+            insertID *free_slot = network->send_queue_free_slots.array[network->send_queue_free_slots.length - 1];
+            network->send_queue_free_slots.length--;
             *free_slot = insert->selfID;
         }
     }
@@ -435,7 +435,7 @@ void
 serialize_document ( TextInsertSet *set, DynamicArray_char *output )
 {
     int i;
-    for (i=0; i < set->used_length; i++)
+    for (i=0; i < set->length; i++)
     {
         serialize_insert( (set->array) + i, output );
     }
@@ -822,7 +822,7 @@ render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buf
     DynamicArray_ulong IDs;
     initDynamicArray_ulong(&IDs);
 
-    for (i=0; i<set->used_length; i++)
+    for (i=0; i<set->length; i++)
     {
         TextInsert insert = *(set->array+i);
         if (insert.parentID == parentID && insert.charPos == charPos)
@@ -832,15 +832,15 @@ render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buf
     }
 
     //sort all the inserts
-    if (IDs.used_length > 0)
+    if (IDs.length > 0)
     {
-        quicksort(IDs.array, 0, IDs.used_length-1);
+        quicksort(IDs.array, 0, IDs.length-1);
     }
 
 
     //render them in order
 
-    for (i=0; i<IDs.used_length; i++)
+    for (i=0; i<IDs.length; i++)
     {
         //get insert
         TextInsert *current_insert = set->array+getInsertByID(set, IDs.array[i]);
@@ -872,10 +872,10 @@ void
 update_buffer (TextInsertSet *set, TextBuffer *buffer)
 {
     //update buffer
-    buffer->utext.used_length = 0;
-    buffer->ID_table.used_length = 0;
-    buffer->author_table.used_length = 0;
-    buffer->charPos_table.used_length = 0;
+    buffer->utext.length = 0;
+    buffer->ID_table.length = 0;
+    buffer->author_table.length = 0;
+    buffer->charPos_table.length = 0;
     render_text(set, 0, 0, buffer);
     addToDynamicArray_uint32(&buffer->utext, 0);
 }
@@ -924,7 +924,7 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_da
         Uint8 charPos;
         if ( pos == 0 )
         {
-            if (set->used_length == 0)
+            if (set->length == 0)
             {
                 insert_ID = 0;
                 charPos = 0;
@@ -938,7 +938,7 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_da
 
         else
         {
-            if (pos == buffer->ID_table.used_length )
+            if (pos == buffer->ID_table.length )
             {
                 insert_ID = buffer->ID_table.array[pos-1];
                 charPos = buffer->charPos_table.array[pos-1] + 1;
@@ -982,7 +982,7 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_da
         new_insert.content[0] = letter;
 
         addToTextInsertSet(set, new_insert);
-        TextInsert *new_insert_pointer = set->array + set->used_length-1; //NOTE: not thread safe!
+        TextInsert *new_insert_pointer = set->array + set->length-1; //NOTE: not thread safe!
         buffer->activeInsertID = new_insert.selfID;
         
         send_insert(new_insert_pointer, network);
@@ -996,7 +996,7 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_da
 int
 delete_letter ( TextInsertSet *set, TextBuffer *buffer, network_data *network )
 {
-    if (buffer->cursor < buffer->ID_table.used_length)
+    if (buffer->cursor < buffer->ID_table.length)
     {
         insertID insert_ID = buffer->ID_table.array[buffer->cursor];
         TextInsert *insert = set->array + getInsertByID(set, insert_ID);
@@ -1168,7 +1168,7 @@ int main (void)
                     initDynamicArray_uint32(&utf32_encoded);
                     utf8_to_utf32(e.text.text, &utf32_encoded);
                     //TODO (maybe): more efficient multi-letter insert
-                    for (i=0; i<utf32_encoded.used_length; i++)
+                    for (i=0; i<utf32_encoded.length; i++)
                     {
                         insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
                     }
@@ -1197,7 +1197,7 @@ int main (void)
 
                         case SDLK_RIGHT:
                         {
-                            if (buffer.cursor < buffer.utext.used_length-1)
+                            if (buffer.cursor < buffer.utext.length-1)
                             {
                                 buffer.cursor++;
                                 buffer.activeInsertID = 0;
@@ -1223,7 +1223,7 @@ int main (void)
                                     DynamicArray_uint32 utf32_encoded;
                                     initDynamicArray_uint32(&utf32_encoded);
                                     utf8_to_utf32(clipboard_content, &utf32_encoded);
-                                    for (i=0; i<utf32_encoded.used_length; i++)
+                                    for (i=0; i<utf32_encoded.length; i++)
                                     {
                                         insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
                                     }
@@ -1244,7 +1244,7 @@ int main (void)
                     blink_timer = 0;
 
                     update_buffer(&set, &buffer);
-                    //printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.used_length);
+                    //printf("Rendered text: %s\n # Inserts: %i\n", output_buffer.array, set.length);
 
                 } break;
 
@@ -1415,7 +1415,7 @@ int main (void)
                     {
                         int i;
                         Uint32 ack_id = base85_dec_uint32(input+4);
-                        for (i=0; i < network.send_queue.used_length; i++)
+                        for (i=0; i < network.send_queue.length; i++)
                         {
                             if ( network.send_queue.array[i] == ack_id )
                             {
@@ -1438,9 +1438,9 @@ int main (void)
             free(base85_length);
 
             //check whether we have to take back the cursor after a deletion
-            if (buffer.cursor > buffer.utext.used_length-1)//NOTE: if removing zero termination of buffer text, this -1 MUST be removed! (else, SEGFAULT....)
+            if (buffer.cursor > buffer.utext.length-1)//NOTE: if removing zero termination of buffer text, this -1 MUST be removed! (else, SEGFAULT....)
             {
-                buffer.cursor = buffer.utext.used_length-1;
+                buffer.cursor = buffer.utext.length-1;
             }
         }
 
@@ -1451,7 +1451,7 @@ int main (void)
 
             TextInsert *resend_insert;
             int i;
-            for(i=0; i<network.send_queue.used_length; i++)
+            for(i=0; i<network.send_queue.length; i++)
             {
                 if (network.send_queue.array[i] != 0)
                 {
@@ -1472,7 +1472,7 @@ int main (void)
     DynamicArray_char saveoutput;
     initDynamicArray_char(&saveoutput);
     serialize_document(&set, &saveoutput);
-    write(savefile, saveoutput.array, saveoutput.used_length);
+    write(savefile, saveoutput.array, saveoutput.length);
     free(saveoutput.array);
     close(savefile);
 
@@ -1484,7 +1484,7 @@ int main (void)
     free(buffer.ID_table.array);
     free(buffer.charPos_table.array);
 
-    for (i=0; i<set.used_length; i++)
+    for (i=0; i<set.length; i++)
     {
         free( set.array[i].content );
     }

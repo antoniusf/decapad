@@ -5,7 +5,7 @@
 typedef struct DynamicArray_ulong
 {
     unsigned long *array;
-    unsigned int used_length;
+    unsigned int length;
     unsigned int allocated_length;
 } DynamicArray_ulong;
 
@@ -21,7 +21,7 @@ concatDynamicArrays_ulong ( DynamicArray_ulong *array1, DynamicArray_ulong *arra
 typedef struct DynamicArray_uint32
 {
     Uint32 *array;
-    unsigned int used_length;
+    unsigned int length;
     unsigned int allocated_length;
 } DynamicArray_uint32;
 
@@ -34,7 +34,7 @@ addToDynamicArray_uint32 ( DynamicArray_uint32 *array, Uint32 item );
 typedef struct DynamicArray_char
 {
     char *array;
-    unsigned int used_length;
+    unsigned int length;
     unsigned int allocated_length;
 } DynamicArray_char;
 
@@ -55,7 +55,7 @@ concatDynamicArrays_char ( DynamicArray_char *array1, DynamicArray_char *array2 
 typedef struct TextInsertSet
 {
     TextInsert *array;
-    unsigned int used_length;
+    unsigned int length;
     unsigned int allocated_length;
 } TextInsertSet;
 
@@ -73,7 +73,7 @@ concatTextInsertSets ( TextInsertSet *array1, TextInsertSet *array2 ); //result 
 typedef struct DynamicArray_pointer
 {
     void **array;
-    unsigned int used_length;
+    unsigned int length;
     unsigned int allocated_length;
 } DynamicArray_pointer;
 
