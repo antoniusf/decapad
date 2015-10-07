@@ -1468,6 +1468,14 @@ int main (void)
         }
     }
 
+    int savefile = open("/tmp/decasave", O_WRONLY|O_CREAT, 0777);
+    DynamicArray_char saveoutput;
+    initDynamicArray_char(&saveoutput);
+    serialize_document(&set, &saveoutput);
+    write(savefile, saveoutput.array, saveoutput.used_length);
+    free(saveoutput.array);
+    close(savefile);
+
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
