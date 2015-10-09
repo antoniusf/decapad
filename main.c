@@ -26,6 +26,8 @@ Uint8 crc_0x97_table[256];
 struct TextBuffer
 {
     int cursor;
+    Sint64 update_hint_cursor_ID; //TODO: Maybe migrate to a c++ compiler so we can have default arguments instead of this
+    Sint16 update_hint_cursor_charPos;
     int x;
     int line_y;
     int y_padding;
@@ -856,12 +858,6 @@ render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buf
             //render the inserts before this character position
             render_text(set, current_insert->selfID, pos, buffer, cursor_ID, cursor_charPos);
 
-            //check for the cursor
-            if ( ( current_insert->selfID == cursor_ID ) && ( pos == cursor_charPos ) )
-            {
-                buffer->cursor = buffer->text.length;
-            }
-
             //stick the appropriate letter on the back
             if (current_insert->content[pos] != 127)
             {
@@ -869,6 +865,12 @@ render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buf
                 addToDynamicArray_ulong(&buffer->ID_table, current_insert->selfID);
                 addToDynamicArray_ulong(&buffer->author_table, current_insert->author);
                 addToDynamicArray_ulong(&buffer->charPos_table, pos);
+            }
+
+            //check for the cursor
+            if ( ( current_insert->selfID == cursor_ID ) && ( pos == cursor_charPos ) )
+            {
+                buffer->cursor = buffer->text.length;
             }
         }
 
@@ -884,16 +886,28 @@ update_buffer (TextInsertSet *set, TextBuffer *buffer)
     //convert cursor to (ID, charPos) format
     Uint32 cursor_ID;
     Uint8 cursor_charPos;
-    if (buffer->cursor < (buffer->text.length - 1)) //zero termination
+
+    if (buffer->update_hint_cursor_ID >= 0)
     {
-        cursor_ID = buffer->ID_table.array[buffer->cursor];
-        cursor_charPos = buffer->charPos_table.array[buffer->cursor];
+        cursor_ID = buffer->update_hint_cursor_ID;
+        cursor_charPos = buffer->update_hint_cursor_charPos;
+        buffer->update_hint_cursor_ID = -1;
+        buffer->update_hint_cursor_charPos = -1;
     }
 
     else
     {
-        cursor_ID = 0;
-        cursor_charPos = 0;
+        if (buffer->cursor > 0)
+        {
+            cursor_ID = buffer->ID_table.array[buffer->cursor - 1];
+            cursor_charPos = buffer->charPos_table.array[buffer->cursor - 1];
+        }
+
+        else
+        {
+            cursor_ID = 0;
+            cursor_charPos = 0;
+        }
     }
 
     //reset all relevant arrays
@@ -907,7 +921,7 @@ update_buffer (TextInsertSet *set, TextBuffer *buffer)
 
     if (cursor_ID == 0)
     {
-        buffer->cursor = buffer->text.length - 1; //zero termination
+        buffer->cursor = 0;
     }
 }
 
@@ -950,6 +964,9 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_da
         active_insert->length++;
 
         send_insert(active_insert, network);
+
+        buffer->update_hint_cursor_ID = buffer->activeInsertID;
+        buffer->update_hint_cursor_charPos = active_insert->length - 1;
     }
 
     else
@@ -1023,6 +1040,9 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_da
         buffer->activeInsertID = new_insert.selfID;
         
         send_insert(new_insert_pointer, network);
+
+        buffer->update_hint_cursor_ID = new_insert.selfID;
+        buffer->update_hint_cursor_charPos = 0;
 
     }
 
@@ -1162,6 +1182,8 @@ int main (void)
 
     TextBuffer buffer;
     buffer.cursor = 0;
+    buffer.update_hint_cursor_ID = -1;
+    buffer.update_hint_cursor_charPos = -1;
     buffer.activeInsertID = 0;
     buffer.x = 10;
     buffer.line_y = 0;
