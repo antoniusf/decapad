@@ -1144,9 +1144,7 @@ int main (void)
     initDynamicArray_ulong(&buffer.author_table);
     initDynamicArray_ulong(&buffer.charPos_table);
 
-    //? why is there no update_buffer here?
-    render_text(&set, 0, 0, &buffer);
-    addToDynamicArray_uint32(&buffer.text, 0);
+    update_buffer(&set, &buffer);
 
 
     //main loop
