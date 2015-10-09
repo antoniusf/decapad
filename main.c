@@ -819,7 +819,8 @@ quicksort (unsigned long *array, unsigned long min, unsigned long max)
 
 
 void
-render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buffer)//buffer.text needs to be initialized; buffer.ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character, buffer.charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
+render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buffer, Uint32 cursor_ID, Uint8 cursor_charPos)
+//buffer.text needs to be initialized; buffer.ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character, buffer.charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
 {
     int i;
     DynamicArray_ulong IDs;
@@ -853,7 +854,13 @@ render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buf
         for (pos=0; pos<current_insert->length; pos++)
         {
             //render the inserts before this character position
-            render_text(set, current_insert->selfID, pos, buffer);
+            render_text(set, current_insert->selfID, pos, buffer, cursor_ID, cursor_charPos);
+
+            //check for the cursor
+            if ( ( current_insert->selfID == cursor_ID ) && ( pos == cursor_charPos ) )
+            {
+                buffer->cursor = buffer->text.length;
+            }
 
             //stick the appropriate letter on the back
             if (current_insert->content[pos] != 127)
@@ -865,7 +872,7 @@ render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buf
             }
         }
 
-        render_text(set, current_insert->selfID, current_insert->length, buffer);
+        render_text(set, current_insert->selfID, current_insert->length, buffer, cursor_ID, cursor_charPos);
     }
 
     free(IDs.array);
@@ -874,13 +881,34 @@ render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buf
 void
 update_buffer (TextInsertSet *set, TextBuffer *buffer)
 {
-    //update buffer
+    //convert cursor to (ID, charPos) format
+    Uint32 cursor_ID;
+    Uint8 cursor_charPos;
+    if (buffer->cursor < (buffer->text.length - 1)) //zero termination
+    {
+        cursor_ID = buffer->ID_table.array[buffer->cursor];
+        cursor_charPos = buffer->charPos_table.array[buffer->cursor];
+    }
+
+    else
+    {
+        cursor_ID = 0;
+        cursor_charPos = 0;
+    }
+
+    //reset all relevant arrays
     buffer->text.length = 0;
     buffer->ID_table.length = 0;
     buffer->author_table.length = 0;
     buffer->charPos_table.length = 0;
-    render_text(set, 0, 0, buffer);
+
+    render_text(set, 0, 0, buffer, cursor_ID, cursor_charPos);
     addToDynamicArray_uint32(&buffer->text, 0);
+
+    if (cursor_ID == 0)
+    {
+        buffer->cursor = buffer->text.length - 1; //zero termination
+    }
 }
 
 int
@@ -1000,7 +1028,6 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_da
 
     update_buffer(set, buffer);
 
-    buffer->cursor++;
     return 0;
 }
 
