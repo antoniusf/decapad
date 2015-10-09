@@ -998,6 +998,8 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_da
 
     }
 
+    update_buffer(set, buffer);
+
     buffer->cursor++;
     return 0;
 }
@@ -1181,7 +1183,6 @@ int main (void)
                     }
                     blink_timer = 0;
 
-                    update_buffer(&set, &buffer);
                 } break;
 
                 case SDL_KEYDOWN:
@@ -1199,6 +1200,7 @@ int main (void)
                             {
                                 buffer.cursor--;
                                 delete_letter (&set, &buffer, &network);
+                                update_buffer(&set, &buffer);
                             }
                         } break;
 
@@ -1247,8 +1249,6 @@ int main (void)
                     }
 
                     blink_timer = 0;
-
-                    update_buffer(&set, &buffer);
 
                 } break;
 
