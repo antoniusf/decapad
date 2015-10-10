@@ -639,10 +639,14 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
 
             //draw underline
             {
-                Uint32 underline_color = (0xFF<<16) + 0xFF;
+                Uint32 underline_color = 0xFF;
                 if (buffer->author_table.array[i] != author_ID)
                 {
-                    underline_color += 0xFF<<24;
+                    underline_color += (86 << 24) + (68 << 16) + (40 << 8);
+                }
+                else
+                {
+                    underline_color += (45 << 24) + (74 << 16) + (94 << 8);
                 }
 
                 for (col = 0; col < advance; col++)
