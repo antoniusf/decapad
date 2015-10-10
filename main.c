@@ -667,7 +667,10 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
                     if ( (target_y+row < window_height) && (target_y+row > 0) && (target_x+col < window_width) && (target_x+col > 0) )
                     {
                         Uint32 color = *( glyhp_buffer + row * (bitmap.pitch) + col );
-                        SETPIXEL(target_x+col, target_y+row, (color<<24)+(color<<16)+(color<<8)+255);
+                        if (color > 0)
+                        {
+                            SETPIXEL(target_x+col, target_y+row, (color<<24)+(color<<16)+(color<<8)+255);
+                        }
                     }
                 }
             }
