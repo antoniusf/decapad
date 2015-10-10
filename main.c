@@ -615,6 +615,7 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
             error = FT_Load_Char( fontface, character, FT_LOAD_RENDER );
 
             FT_Bitmap bitmap = fontface->glyph->bitmap;
+            int advance = fontface->glyph->advance.x >> 6;
 
             if ( bitmap.pixel_mode != FT_PIXEL_MODE_GRAY )
             {
@@ -622,20 +623,42 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
                 return;
             }
 
-            //copy glyph into pixel array
-
-            int target_x, target_y;
-            target_x = x + fontface->glyph->bitmap_left;
-            target_y = y - fontface->glyph->bitmap_top;
-
             if ( bitmap.pitch < 0 )
             {
                 printf("Freetype glyph bitmap pitch is negative. Surely wasn't expecting that...\n");
                 return;
             }
 
+
+            int target_x, target_y;
+            target_x = x + fontface->glyph->bitmap_left;
+            target_y = y - fontface->glyph->bitmap_top;
+
             int row;
             int col;
+
+            //draw underline
+            {
+                Uint32 underline_color = (0xFF<<16) + 0xFF;
+                if (buffer->author_table.array[i] != author_ID)
+                {
+                    underline_color += 0xFF<<24;
+                }
+
+                for (col = 0; col < advance; col++)
+                {
+                    if ( (y+2 < window_height) && (y+1 >= 0) && (target_x+col < window_width) && (target_x+col >= 0) )
+                    {
+                        SETPIXEL(x+col, y+1, underline_color);
+                        SETPIXEL(x+col, y+2, underline_color);
+                    }
+                }
+            }
+
+
+
+            //copy glyph into pixel array
+
             unsigned char *glyhp_buffer = (unsigned char *) (bitmap.buffer);
             for ( row = 0; row < bitmap.rows; row++ )
             {
@@ -646,24 +669,6 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
                         Uint32 color = *( glyhp_buffer + row * (bitmap.pitch) + col );
                         SETPIXEL(target_x+col, target_y+row, (color<<24)+(color<<16)+(color<<8)+255);
                     }
-                }
-            }
-
-            int advance = fontface->glyph->advance.x >> 6;
-
-            //draw underline
-            Uint32 underline_color = (0xFF<<16) + 0xFF;
-            if (buffer->author_table.array[i] != author_ID)
-            {
-                underline_color += 0xFF<<24;
-            }
-
-            for (col = 0; col < advance; col++)
-            {
-                if ( (y+2 < window_height) && (y+1 >= 0) && (target_x+col < window_width) && (target_x+col >= 0) )
-                {
-                    SETPIXEL(target_x+col, y+1, underline_color);
-                    SETPIXEL(target_x+col, y+2, underline_color);
                 }
             }
 
