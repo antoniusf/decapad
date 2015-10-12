@@ -574,6 +574,17 @@ seek_to_char (Uint32 *text, Uint32 find_char, int count)
     return NULL;
 }
 
+Uint32 *
+seek_to_next_word (Uint32 *text)
+{
+    int i;
+    for (i=0; (text[i] != 0) && (text[i] != 32) && (text[i] != 10); i++);
+    text += i;
+    for (i=0; (text[i] == 32) || (text[i] == 10); i++);
+    text += i;
+    return text;
+}
+
 
 void
 draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, FT_Face fontface, int set_cursor_x, int set_cursor_y)
@@ -1293,10 +1304,23 @@ int main (void)
 
                         case SDLK_RIGHT:
                         {
-                            if (buffer.cursor < buffer.text.length-1)
+                            if (e.key.keysym.mod & KMOD_SHIFT)
                             {
-                                buffer.cursor++;
-                                buffer.activeInsertID = 0;
+                                Uint32 *new_text_pos = seek_to_next_word(&buffer.text.array[buffer.cursor]);
+                                if (new_text_pos)
+                                {
+                                    buffer.cursor = new_text_pos - buffer.text.array;
+                                    buffer.activeInsertID = 0;
+                                }
+                            }
+
+                            else
+                            {
+                                if (buffer.cursor < buffer.text.length-1)
+                                {
+                                    buffer.cursor++;
+                                    buffer.activeInsertID = 0;
+                                }
                             }
                         } break;
 
