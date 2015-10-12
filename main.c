@@ -550,6 +550,30 @@ seek_to_line (Uint32 *text, int line)
     return text;
 }
 
+Uint32 *
+seek_to_char (Uint32 *text, Uint32 find_char, int count)
+{
+    if (count == 0)
+    {
+        return text;
+    }
+
+    int i;
+    for (i=0; text[i]; i++)
+    {
+        if (text[i] == find_char)
+        {
+            count--;
+            if (count == 0)
+            {
+                return text+i;
+            }
+        }
+    }
+
+    return NULL;
+}
+
 
 void
 draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, FT_Face fontface, int set_cursor_x, int set_cursor_y)
@@ -1281,6 +1305,38 @@ int main (void)
                             if (buffer.cursor > 0)
                             {
                                 buffer.cursor--;
+                                buffer.activeInsertID = 0;
+                            }
+                        } break;
+
+                        case SDLK_UP:
+                        {
+                            int new_cursor;
+                            int first = 0;
+                            for (new_cursor = buffer.cursor-1; new_cursor >= 0; new_cursor--)
+                            {
+                                if (buffer.text.array[new_cursor] == 10)
+                                {
+                                    if (first)
+                                    {
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        first = 1;
+                                    }
+                                }
+                            }
+                            buffer.cursor = new_cursor+1;
+                            buffer.activeInsertID = 0;
+                        } break;
+
+                        case SDLK_DOWN:
+                        {
+                            Uint32 *new_text_pos = seek_to_char (&buffer.text.array[buffer.cursor], 10, 1);
+                            if (new_text_pos)
+                            {
+                                buffer.cursor = new_text_pos - buffer.text.array + 1;
                                 buffer.activeInsertID = 0;
                             }
                         } break;
