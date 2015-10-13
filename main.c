@@ -550,42 +550,6 @@ seek_to_line (Uint32 *text, int line)
     return text;
 }
 
-Uint32 *
-seek_to_char (Uint32 *text, Uint32 find_char, int count)
-{
-    if (count == 0)
-    {
-        return text;
-    }
-
-    int i;
-    for (i=0; text[i]; i++)
-    {
-        if (text[i] == find_char)
-        {
-            count--;
-            if (count == 0)
-            {
-                return text+i;
-            }
-        }
-    }
-
-    return NULL;
-}
-
-Uint32 *
-seek_to_next_word (Uint32 *text)
-{
-    int i;
-    for (i=0; (text[i] != 0) && (text[i] != 32) && (text[i] != 10); i++);
-    text += i;
-    for (i=0; (text[i] == 32) || (text[i] == 10); i++);
-    text += i;
-    return text;
-}
-
-
 void
 draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, FT_Face fontface, int set_cursor_x, int set_cursor_y)
 {
@@ -1304,19 +1268,19 @@ int main (void)
 
                         case SDLK_RIGHT:
                         {
-                            if (e.key.keysym.mod & KMOD_SHIFT)
+                            if (e.key.keysym.mod & KMOD_SHIFT) //seek to next word
                             {
-                                Uint32 *new_text_pos = seek_to_next_word(&buffer.text.array[buffer.cursor]);
-                                if (new_text_pos)
-                                {
-                                    buffer.cursor = new_text_pos - buffer.text.array;
-                                    buffer.activeInsertID = 0;
-                                }
+                                int i;
+                                //skip to next white space
+                                for (i=buffer.cursor; (i <= buffer.text.length) && (buffer.text.array[i] != 10) && (buffer.text.array[i] != 32); i++);
+                                //skip to the end of the whitespace
+                                for (; (i <= buffer.text.length) && ( (buffer.text.array[i] == 10) || (buffer.text.array[i] == 32) ); i++);
+                                buffer.cursor = i;
                             }
 
                             else
                             {
-                                if (buffer.cursor < buffer.text.length-1)
+                                if (buffer.cursor < buffer.text.length-1) //zero termination!
                                 {
                                     buffer.cursor++;
                                     buffer.activeInsertID = 0;
@@ -1326,20 +1290,31 @@ int main (void)
 
                         case SDLK_LEFT:
                         {
-                            if (buffer.cursor > 0)
+                            if (e.key.keysym.mod & KMOD_SHIFT) //seek to previous word
                             {
-                                buffer.cursor--;
-                                buffer.activeInsertID = 0;
+                                    int i = buffer.cursor-1;
+                                    for (; (i >= 0) && (buffer.text.array[i] != 10) && (buffer.text.array[i] != 32); i--);
+                                    for (; (i >= 0) && ( (buffer.text.array[i] == 10) || (buffer.text.array[i] == 32) ); i--);
+                                    buffer.cursor = i+1;
+                            }
+
+                            else
+                            {
+                                if (buffer.cursor > 0)
+                                {
+                                    buffer.cursor--;
+                                    buffer.activeInsertID = 0;
+                                }
                             }
                         } break;
 
                         case SDLK_UP:
                         {
-                            int new_cursor;
+                            int i;
                             int first = 0;
-                            for (new_cursor = buffer.cursor-1; new_cursor >= 0; new_cursor--)
+                            for (i=buffer.cursor; (i > 0); i--)
                             {
-                                if (buffer.text.array[new_cursor] == 10)
+                                if (buffer.text.array[i-1] == 10)
                                 {
                                     if (first)
                                     {
@@ -1351,18 +1326,17 @@ int main (void)
                                     }
                                 }
                             }
-                            buffer.cursor = new_cursor+1;
+
+                            buffer.cursor = i;
                             buffer.activeInsertID = 0;
                         } break;
 
                         case SDLK_DOWN:
                         {
-                            Uint32 *new_text_pos = seek_to_char (&buffer.text.array[buffer.cursor], 10, 1);
-                            if (new_text_pos)
-                            {
-                                buffer.cursor = new_text_pos - buffer.text.array + 1;
-                                buffer.activeInsertID = 0;
-                            }
+                            int i;
+                            for (i=buffer.cursor; (i <= buffer.text.length) && (buffer.text.array[i] != 10); i++);
+                            buffer.cursor = i+1;
+                            buffer.activeInsertID = 0;
                         } break;
 
                         case SDLK_v:
