@@ -570,8 +570,9 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
 
 
     int i = start-text;
-    while ((character=text[i]))
+    for (; i < buffer->text.length; i++)
     {
+        character = text[i];
         int linewrap = 0;
 
         if (character == 10) {
@@ -711,8 +712,6 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
                 break;
             }
         }
-
-        i++;
     }
 
     if (set_cursor_x >= 0)
@@ -1283,9 +1282,10 @@ int main (void)
                                 if (buffer.cursor < buffer.text.length-1) //zero termination!
                                 {
                                     buffer.cursor++;
-                                    buffer.activeInsertID = 0;
                                 }
                             }
+
+                            buffer.activeInsertID = 0;
                         } break;
 
                         case SDLK_LEFT:
@@ -1303,9 +1303,10 @@ int main (void)
                                 if (buffer.cursor > 0)
                                 {
                                     buffer.cursor--;
-                                    buffer.activeInsertID = 0;
                                 }
                             }
+
+                            buffer.activeInsertID = 0;
                         } break;
 
                         case SDLK_UP:
