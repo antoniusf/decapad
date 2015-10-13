@@ -929,7 +929,6 @@ update_buffer (TextInsertSet *set, TextBuffer *buffer)
     buffer->charPos_table.length = 0;
 
     render_text(set, 0, 0, buffer, cursor_ID, cursor_charPos);
-    addToDynamicArray_uint32(&buffer->text, 0);
 
     if (cursor_ID == 0)
     {
@@ -1279,7 +1278,7 @@ int main (void)
 
                             else
                             {
-                                if (buffer.cursor < buffer.text.length-1) //zero termination!
+                                if (buffer.cursor < buffer.text.length)
                                 {
                                     buffer.cursor++;
                                 }
@@ -1567,9 +1566,9 @@ int main (void)
             free(base85_length);
 
             //check whether we have to take back the cursor after a deletion
-            if (buffer.cursor > buffer.text.length-1)//NOTE: if removing zero termination of buffer text, this -1 MUST be removed! (else, SEGFAULT....)
+            if (buffer.cursor > buffer.text.length)
             {
-                buffer.cursor = buffer.text.length-1;
+                buffer.cursor = buffer.text.length;
             }
         }
 
