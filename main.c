@@ -561,6 +561,8 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
     int height = (int) fontface->size->metrics.height / 64;
     y += height;
 
+    FT_UInt glyph_index, previous_glyph_index = 0;
+
     Uint32 *start = seek_to_line(text, buffer->line);
     if (!start)
     {
@@ -612,7 +614,15 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
                 }
             }
 
-            error = FT_Load_Char( fontface, character, FT_LOAD_RENDER );
+            glyph_index = FT_Get_Char_Index(fontface, character);
+            if (previous_glyph_index)
+            {
+                FT_Vector kerning;
+                error = FT_Get_Kerning(fontface, previous_glyph_index, glyph_index, FT_KERNING_DEFAULT, &kerning);
+                //x += kerning.x / 64;
+            }
+            previous_glyph_index = glyph_index;
+            error = FT_Load_Glyph ( fontface, glyph_index, FT_LOAD_RENDER );
 
             FT_Bitmap bitmap = fontface->glyph->bitmap;
             int advance = fontface->glyph->advance.x >> 6;
