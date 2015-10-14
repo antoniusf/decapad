@@ -590,17 +590,17 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
         {
             if (character == 32)
             {
-                Uint32 *lookahead = text+i;
+                int lk_i = i;
                 int lookahead_x = x;
-                error = FT_Load_Char(fontface, *lookahead, FT_LOAD_DEFAULT);
+                error = FT_Load_Char(fontface, text[lk_i], FT_LOAD_DEFAULT);
                 lookahead_x += fontface->glyph->advance.x / 64;
-                lookahead++;
 
-                while ( (*lookahead != 0) && (*lookahead != 32) && (*lookahead != 10))
+                lk_i++;
+
+                for (; (lk_i < buffer->text.length) && (text[lk_i] != 32) && (text[lk_i] != 10); lk_i++)
                 {
-                    error = FT_Load_Char(fontface, *lookahead, FT_LOAD_RENDER);
+                    error = FT_Load_Char(fontface, text[lk_i], FT_LOAD_RENDER);
                     lookahead_x += fontface->glyph->advance.x / 64;
-                    lookahead++;
 
                     if (lookahead_x > window_width)
                     {
@@ -619,7 +619,7 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
             {
                 FT_Vector kerning;
                 error = FT_Get_Kerning(fontface, previous_glyph_index, glyph_index, FT_KERNING_DEFAULT, &kerning);
-                //x += kerning.x / 64;
+                x += kerning.x / 64;
             }
             previous_glyph_index = glyph_index;
             error = FT_Load_Glyph ( fontface, glyph_index, FT_LOAD_RENDER );
