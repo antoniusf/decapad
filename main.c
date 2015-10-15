@@ -23,6 +23,12 @@ int pitch;
 
 Uint8 crc_0x97_table[256];
 
+enum PROGRAM_STATES
+{
+    STATE_LOGIN,
+    STATE_PAD
+} program_state;
+
 struct TextBuffer
 {
     int cursor;
@@ -94,6 +100,16 @@ string_compare (char *buffer1, char *buffer2, int length)
         }
     }
     return 1;
+}
+
+void
+add_string_to_utf32_text ( DynamicArray_uint32 *text, char *string)
+{
+    int i;
+    for (i=0; string[i]; i++)
+    {
+        addToDynamicArray_uint32(text, string[i]);
+    }
 }
 
 long //so we can have all the unsigned ints *and* return -1 on not finding an insert
@@ -543,11 +559,26 @@ seek_to_line (Uint32 *text, int line)
         }
     }
     
-    if (*(text-1) == 0) //we ran out text, line number too high
+    if (*(text-1) == 0) //we ran out text, line number too high //TODO: remove zero termination
     {
         return NULL;
     }
     return text;
+}
+
+int get_line_nr (DynamicArray_uint32 *text, int cursor)
+{
+    int line_nr = 0;
+    int i;
+    for (i=0; i<cursor; i++)
+    {
+        if (text->array[i] == 10)
+        {
+            line_nr++;
+        }
+    }
+
+    return line_nr;
 }
 
 void
@@ -947,6 +978,23 @@ update_buffer (TextInsertSet *set, TextBuffer *buffer)
     }
 }
 
+void
+update_login_buffer (TextBuffer *buffer, DynamicArray_uint32 *username, DynamicArray_uint32 *password)
+{
+    int i;
+    buffer->text.length = 0;
+    add_string_to_utf32_text(&buffer->text, "username: ");
+    for (i=0; i<username->length; i++)
+    {
+        addToDynamicArray_uint32(&buffer->text, username->array[i]);
+    }
+    add_string_to_utf32_text(&buffer->text, "\npassword: ");
+    for (i=0; i<password->length; i++)
+    {
+        addToDynamicArray_uint32(&buffer->text, password->array[i]);
+    }
+}
+
 int
 is_a_ancestor_of_b (TextInsertSet *set, TextInsert *a, TextInsert *b)
 {
@@ -1218,6 +1266,12 @@ int main (void)
     initDynamicArray_ulong(&buffer.author_table);
     initDynamicArray_ulong(&buffer.charPos_table);
 
+    program_state = STATE_LOGIN;
+    add_string_to_utf32_text(&buffer.text, "username: \npassword: ");
+    DynamicArray_uint32 username, password;
+    initDynamicArray_uint32(&username);
+    initDynamicArray_uint32(&password);
+
     //main loop
     int quit=0;
     int i;
@@ -1245,12 +1299,36 @@ int main (void)
                     DynamicArray_uint32 utf32_encoded;
                     initDynamicArray_uint32(&utf32_encoded);
                     utf8_to_utf32(e.text.text, &utf32_encoded);
-                    //TODO (maybe): more efficient multi-letter insert
-                    for (i=0; i<utf32_encoded.length; i++)
+                    if (program_state == STATE_PAD)
                     {
-                        insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
+                        //TODO (maybe): more efficient multi-letter insert
+                        for (i=0; i<utf32_encoded.length; i++)
+                        {
+                            insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
+                        }
+                        blink_timer = 0;
                     }
-                    blink_timer = 0;
+                    else if (program_state == STATE_LOGIN)
+                    {
+                        int line_nr = get_line_nr(&buffer.text, buffer.cursor);
+
+                        if (line_nr == 0)
+                        {
+                            for (i=0; i<utf32_encoded.length; i++)
+                            {
+                                addToDynamicArray_uint32(&username, utf32_encoded.array[i]);
+                            }
+                        }
+
+                        else if (line_nr == 1)
+                        {
+                            for (i=0; i<utf32_encoded.length; i++)
+                            {
+                                addToDynamicArray_uint32(&password, utf32_encoded.array[i]);
+                            }
+                        }
+                        update_login_buffer(&buffer, &username, &password);
+                    }
 
                 } break;
 
@@ -1260,15 +1338,41 @@ int main (void)
                     {
                         case SDLK_RETURN:
                         {
-                            insert_letter(&set, &buffer, 10, &network);
+                            if (program_state == STATE_PAD)
+                            {
+                                insert_letter(&set, &buffer, 10, &network);
+                            }
+                            else if (program_state == STATE_LOGIN)
+                            {
+                                buffer.cursor = 0;
+                                buffer.text.length = 0;
+                                program_state = STATE_PAD;
+                            }
                         } break;
 
                         case SDLK_BACKSPACE:
                         {
                             if (buffer.cursor > 0)
                             {
-                                buffer.cursor--;
-                                delete_letter (&set, &buffer, &network);
+                                if (program_state == STATE_PAD)
+                                {
+                                    buffer.cursor--;
+                                    delete_letter (&set, &buffer, &network);
+                                }
+                                else if (program_state == STATE_LOGIN)
+                                {
+                                    int line_nr = get_line_nr(&buffer.text, buffer.cursor);
+                                    if (line_nr == 0 && username.length > 0)
+                                    {
+                                        username.length--;
+                                        buffer.cursor--;
+                                    }
+                                    else if (line_nr == 1 && password.length > 0)
+                                    {
+                                        password.length--;
+                                        buffer.cursor--;
+                                    }
+                                }
                             }
                         } break;
 
