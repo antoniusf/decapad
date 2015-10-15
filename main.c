@@ -648,6 +648,7 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
             int col;
 
             //draw underline
+            if (buffer->author_table.length)
             {
                 Uint32 underline_color = 0xFF;
                 if (buffer->author_table.array[i] != author_ID)
@@ -1085,6 +1086,7 @@ delete_letter ( TextInsertSet *set, TextBuffer *buffer, network_data *network )
 
         send_insert(insert, network);
     }
+    update_buffer(set, buffer);
     return 0;
 }
 
@@ -1270,7 +1272,6 @@ int main (void)
                             {
                                 buffer.cursor--;
                                 delete_letter (&set, &buffer, &network);
-                                update_buffer(&set, &buffer);
                             }
                         } break;
 
