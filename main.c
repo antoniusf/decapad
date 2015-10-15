@@ -497,17 +497,17 @@ draw_cursor (int x, int y, Uint32 *pixels, FT_Face fontface)
 }
 
 int
-number_of_linewraps (Uint32 *text, int left_padding, FT_Face fontface)
+number_of_linewraps (DynamicArray_uint32 *text, int offset, int left_padding, FT_Face fontface)
 {
-    int i = 0;
-    Uint32 character = text[0]; //for the first check
+    int i;
+    Uint32 character;
     int linewraps = 0;
     int x = left_padding;
     int word_length = 0;
 
-    for (i = 0; (character != 10 && character != 0); i++)
+    for (i = offset; (i < text->length) && (text->array[i] != 10); i++)
     {
-        character = text[i];
+        character = text->array[i];
         if (character == 32)
         {
             x += word_length;
@@ -555,6 +555,7 @@ seek_to_line (DynamicArray_uint32 *text, int line)
 
             if (newlines == line)
             {
+                i++;
                 break;
             }
         }
@@ -1498,17 +1499,17 @@ int main (void)
 
                         else
                         {
-                            Uint32 *previous_line = seek_to_line(&buffer.text, buffer.line-1) + buffer.text.array;
-                            int offset = (number_of_linewraps(previous_line, buffer.x, fontface)+1) * line_height;
+                            int previous_line_offset = seek_to_line(&buffer.text, buffer.line-1);
+                            int y_offset = (number_of_linewraps(&buffer.text, previous_line_offset, buffer.x, fontface)+1) * line_height;
                             buffer.line--;
-                            buffer.line_y -= offset;
+                            buffer.line_y -= y_offset;
                         }
                     }
 
                     else
                     {
-                        Uint32 *current_line = seek_to_line(&buffer.text, buffer.line) + buffer.text.array;
-                        int current_line_height = (number_of_linewraps(current_line, buffer.x, fontface)+1) * line_height;
+                        int current_line_offset = seek_to_line(&buffer.text, buffer.line);
+                        int current_line_height = (number_of_linewraps(&buffer.text, current_line_offset, buffer.x, fontface)+1) * line_height;
                         
                         if (-buffer.line_y > current_line_height)
                         {
