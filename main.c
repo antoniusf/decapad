@@ -974,14 +974,11 @@ update_login_buffer (TextBuffer *buffer, DynamicArray_uint32 *username, DynamicA
     int i;
     buffer->text.length = 0;
     add_string_to_utf32_text(&buffer->text, "username: ");
-    for (i=0; i<username->length; i++)
-    {
-        addToDynamicArray_uint32(&buffer->text, username->array[i]);
-    }
+    concatDynamicArrays_uint32(&buffer->text, username);
     add_string_to_utf32_text(&buffer->text, "\npassword: ");
     for (i=0; i<password->length; i++)
     {
-        addToDynamicArray_uint32(&buffer->text, password->array[i]);
+        addToDynamicArray_uint32(&buffer->text, 42); //42 is '*'
     }
 }
 
