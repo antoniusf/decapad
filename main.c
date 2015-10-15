@@ -537,18 +537,19 @@ number_of_linewraps (Uint32 *text, int left_padding, FT_Face fontface)
     return linewraps;
 }
 
-Uint32 *
-seek_to_line (Uint32 *text, int line)
+int
+seek_to_line (DynamicArray_uint32 *text, int line)
 {
     if (line == 0)
     {
-        return text;
+        return 0;
     }
 
     int newlines = 0;
-    while (*text++)
+    int i;
+    for (i=0; i<text->length; i++)
     {
-        if (*(text-1) == 10)
+        if (text->array[i] == 10)
         {
             newlines++;
 
@@ -559,11 +560,7 @@ seek_to_line (Uint32 *text, int line)
         }
     }
     
-    if (*(text-1) == 0) //we ran out text, line number too high //TODO: remove zero termination
-    {
-        return NULL;
-    }
-    return text;
+    return i;
 }
 
 int get_line_nr (DynamicArray_uint32 *text, int cursor)
@@ -594,15 +591,7 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
 
     FT_UInt glyph_index, previous_glyph_index = 0;
 
-    Uint32 *start = seek_to_line(text, buffer->line);
-    if (!start)
-    {
-        printf("draw_text says: line number too high!\n");
-        return;
-    }
-
-
-    int i = start-text;
+    int i = seek_to_line(&buffer->text, buffer->line);
     for (; i < buffer->text.length; i++)
     {
         character = text[i];
@@ -1509,7 +1498,7 @@ int main (void)
 
                         else
                         {
-                            Uint32 *previous_line = seek_to_line(buffer.text.array, buffer.line-1);
+                            Uint32 *previous_line = seek_to_line(&buffer.text, buffer.line-1) + buffer.text.array;
                             int offset = (number_of_linewraps(previous_line, buffer.x, fontface)+1) * line_height;
                             buffer.line--;
                             buffer.line_y -= offset;
@@ -1518,12 +1507,13 @@ int main (void)
 
                     else
                     {
-                        Uint32 *current_line = seek_to_line(buffer.text.array, buffer.line);
+                        Uint32 *current_line = seek_to_line(&buffer.text, buffer.line) + buffer.text.array;
                         int current_line_height = (number_of_linewraps(current_line, buffer.x, fontface)+1) * line_height;
+                        
                         if (-buffer.line_y > current_line_height)
                         {
-                            Uint32 *next_line = seek_to_line(buffer.text.array, buffer.line+1);
-                            if (next_line)
+                            int nr_of_lines = get_line_nr(&buffer.text, buffer.text.length);
+                            if (buffer.line < nr_of_lines)
                             {
                                 buffer.line++;
                                 buffer.line_y += current_line_height;
