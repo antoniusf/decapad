@@ -1490,7 +1490,7 @@ int main (void)
                         buffer.line_y += line_height;
                     }
 
-                    if (buffer.line_y > 0)
+                    if (buffer.line_y >= 0)
                     {
                         if (buffer.line == 0)
                         {
