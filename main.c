@@ -1218,9 +1218,6 @@ int main (void)
     initDynamicArray_ulong(&buffer.author_table);
     initDynamicArray_ulong(&buffer.charPos_table);
 
-    update_buffer(&set, &buffer);
-
-
     //main loop
     int quit=0;
     int i;
