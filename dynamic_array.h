@@ -31,6 +31,9 @@ initDynamicArray_uint32 ( DynamicArray_uint32 *array );
 int
 addToDynamicArray_uint32 ( DynamicArray_uint32 *array, Uint32 item );
 
+int
+concatDynamicArrays_uint32 ( DynamicArray_uint32 *array1, DynamicArray_uint32 *array2 );
+
 typedef struct DynamicArray_char
 {
     char *array;

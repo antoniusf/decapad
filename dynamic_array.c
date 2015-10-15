@@ -94,6 +94,20 @@ addToDynamicArray_uint32 ( DynamicArray_uint32 *array, Uint32 item )
     return 0;
 }
 
+int
+concatDynamicArrays_uint32 ( DynamicArray_uint32 *array1, DynamicArray_uint32 *array2 )
+{
+    int i;
+    for (i=0; i<array2->length; i++)
+    {
+        if (addToDynamicArray_uint32(array1, array2->array[i]) != 0)
+        {
+            return -1;
+        }
+    }
+    return 0;
+}
+
 //char
 
 int
