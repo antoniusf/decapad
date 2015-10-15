@@ -1372,9 +1372,9 @@ int main (void)
                             {
                                 int i;
                                 //skip to next white space
-                                for (i=buffer.cursor; (i <= buffer.text.length) && (buffer.text.array[i] != 10) && (buffer.text.array[i] != 32); i++);
+                                for (i=buffer.cursor; (i < buffer.text.length) && (buffer.text.array[i] != 10) && (buffer.text.array[i] != 32); i++);
                                 //skip to the end of the whitespace
-                                for (; (i <= buffer.text.length) && ( (buffer.text.array[i] == 10) || (buffer.text.array[i] == 32) ); i++);
+                                for (; (i < buffer.text.length) && ( (buffer.text.array[i] == 10) || (buffer.text.array[i] == 32) ); i++);
                                 buffer.cursor = i;
                             }
 
@@ -1436,7 +1436,7 @@ int main (void)
                         case SDLK_DOWN:
                         {
                             int i;
-                            for (i=buffer.cursor; (i <= buffer.text.length) && (buffer.text.array[i] != 10); i++);
+                            for (i=buffer.cursor; (i < buffer.text.length-1) && (buffer.text.array[i] != 10); i++);
                             buffer.cursor = i+1;
                             buffer.activeInsertID = 0;
                         } break;
@@ -1490,7 +1490,7 @@ int main (void)
                         buffer.line_y += line_height;
                     }
 
-                    if (buffer.line_y >= 0)
+                    if (buffer.line_y >= 0) //TODO: might require further adaptation with the top padding
                     {
                         if (buffer.line == 0)
                         {
