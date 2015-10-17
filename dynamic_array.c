@@ -95,6 +95,42 @@ addToDynamicArray_uint32 ( DynamicArray_uint32 *array, Uint32 item )
 }
 
 int
+insertIntoDynamicArray_uint32 ( DynamicArray_uint32 *array, Uint32 item, long int position )
+{
+    if (array->length == array->allocated_length)
+    {
+        array->array = realloc(array->array, (array->allocated_length)*2*sizeof(Uint32));
+        if (array->array == NULL)
+        {
+            printf("Error in insertIntoDynamicArray_uint32: realloc didn't work.\n");
+            return -1;
+        }
+        array->allocated_length *= 2;
+    }
+
+    long int i;
+    for (i=array->length-1; i >= position; i--)
+    {
+        array->array[i+1] = array->array[i];
+    }
+
+    array->array[position] = item;
+    array->length++;
+    return 0;
+}
+
+void
+deleteFromDynamicArray_uint32 ( DynamicArray_uint32 *array, long int position )
+{
+    long int i;
+    for (i=position; i<array->length-1; i++)
+    {
+        array->array[i] = array->array[i+1];
+    }
+    array->length--;
+}
+
+int
 concatDynamicArrays_uint32 ( DynamicArray_uint32 *array1, DynamicArray_uint32 *array2 )
 {
     int i;
