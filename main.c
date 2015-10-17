@@ -1125,6 +1125,61 @@ delete_letter ( TextInsertSet *set, TextBuffer *buffer, network_data *network )
     return 0;
 }
 
+
+void
+login_insert_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, DynamicArray_uint32 *password, Uint32 letter )
+{
+    int line_nr = get_line_nr(&buffer->text, buffer->cursor);
+
+    if (line_nr == 0)
+    {
+        int insert_pos = buffer->cursor - 10;
+        if (insert_pos >= 0)
+        {
+            insertIntoDynamicArray_uint32(username, letter, insert_pos);
+            buffer->cursor++;
+        }
+    }
+    
+    else if (line_nr == 1)
+    {
+        int password_line_offset = seek_to_line(&buffer->text, 1);
+        int insert_pos = buffer->cursor - 10 - password_line_offset;
+        if (insert_pos >= 0)
+        {
+            insertIntoDynamicArray_uint32(password, letter, insert_pos);
+            buffer->cursor++;
+        }
+    }
+}
+
+void
+login_delete_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, DynamicArray_uint32 *password )
+{
+    int line_nr = get_line_nr(&buffer->text, buffer->cursor);
+
+    if (line_nr == 0)
+    {
+        int delete_pos = buffer->cursor - 10 - 1;
+        if (delete_pos >= 0)
+        {
+            deleteFromDynamicArray_uint32(username, delete_pos);
+        }
+        buffer->cursor--;
+    }
+
+    else if (line_nr == 1)
+    {
+        int password_line_offset = seek_to_line(&buffer->text, 1);
+        int delete_pos = buffer->cursor - 10 - password_line_offset - 1;
+        if (delete_pos >= 0)
+        {
+            deleteFromDynamicArray_uint32(password, delete_pos);
+        }
+        buffer->cursor--;
+    }
+}
+
 int main (void)
 {
 
@@ -1297,22 +1352,9 @@ int main (void)
                     }
                     else if (program_state == STATE_LOGIN)
                     {
-                        int line_nr = get_line_nr(&buffer.text, buffer.cursor);
-
-                        if (line_nr == 0)
+                        for (i=0; i<utf32_encoded.length; i++)
                         {
-                            for (i=0; i<utf32_encoded.length; i++)
-                            {
-                                addToDynamicArray_uint32(&username, utf32_encoded.array[i]);
-                            }
-                        }
-
-                        else if (line_nr == 1)
-                        {
-                            for (i=0; i<utf32_encoded.length; i++)
-                            {
-                                addToDynamicArray_uint32(&password, utf32_encoded.array[i]);
-                            }
+                            login_insert_letter(&buffer, &username, &password, utf32_encoded.array[i]);
                         }
                         update_login_buffer(&buffer, &username, &password);
                     }
@@ -1348,17 +1390,8 @@ int main (void)
                                 }
                                 else if (program_state == STATE_LOGIN)
                                 {
-                                    int line_nr = get_line_nr(&buffer.text, buffer.cursor);
-                                    if (line_nr == 0 && username.length > 0)
-                                    {
-                                        username.length--;
-                                        buffer.cursor--;
-                                    }
-                                    else if (line_nr == 1 && password.length > 0)
-                                    {
-                                        password.length--;
-                                        buffer.cursor--;
-                                    }
+                                    login_delete_letter(&buffer, &username, &password);
+                                    update_login_buffer(&buffer, &username, &password);
                                 }
                             }
                         } break;
