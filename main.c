@@ -1134,22 +1134,24 @@ login_insert_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
     if (line_nr == 0)
     {
         int insert_pos = buffer->cursor - 10;
-        if (insert_pos >= 0)
+        if (insert_pos < 0)
         {
-            insertIntoDynamicArray_uint32(username, letter, insert_pos);
-            buffer->cursor++;
+            insert_pos = username->length;
         }
+        insertIntoDynamicArray_uint32(username, letter, insert_pos);
+        buffer->cursor = insert_pos + 10 + 1;
     }
     
     else if (line_nr == 1)
     {
         int password_line_offset = seek_to_line(&buffer->text, 1);
         int insert_pos = buffer->cursor - 10 - password_line_offset;
-        if (insert_pos >= 0)
+        if (insert_pos < 0)
         {
-            insertIntoDynamicArray_uint32(password, letter, insert_pos);
-            buffer->cursor++;
+            insert_pos = password->length;
         }
+        insertIntoDynamicArray_uint32(password, letter, insert_pos);
+        buffer->cursor = insert_pos + 10 + password_line_offset + 1;
     }
 }
 
@@ -1164,8 +1166,8 @@ login_delete_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
         if (delete_pos >= 0)
         {
             deleteFromDynamicArray_uint32(username, delete_pos);
+            buffer->cursor--;
         }
-        buffer->cursor--;
     }
 
     else if (line_nr == 1)
@@ -1175,8 +1177,8 @@ login_delete_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
         if (delete_pos >= 0)
         {
             deleteFromDynamicArray_uint32(password, delete_pos);
+            buffer->cursor--;
         }
-        buffer->cursor--;
     }
 }
 
