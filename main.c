@@ -102,19 +102,14 @@ string_compare (char *buffer1, char *buffer2, int length)
     return 1;
 }
 
-char *
-DynamicArray_uint32_to_string ( DynamicArray_uint32 *in_text )
+void
+DynamicArray_uint32_to_DynamicArray_char ( DynamicArray_uint32 *in_text, DynamicArray_char *out_text )
 {
-    char *out_string = malloc(in_text->length+1);
-
     int i;
     for (i=0; i<in_text->length; i++)
     {
-        out_string[i] = in_text->array[i];
+        addToDynamicArray_char(out_text, (char) in_text->array[i]);
     }
-    out_string[in_text->length] = 0;
-
-    return out_string;
 }
 
 void
@@ -502,14 +497,19 @@ save_document ( TextInsertSet *set, DynamicArray_uint32 *pad_with )
 {
     if (pad_with->length > 0)
     {
-        char *filename = DynamicArray_uint32_to_string(pad_with); //defer free(filename)
-        FILE *savefile = fopen(filename, "w");
-        DynamicArray_char output;
-        initDynamicArray_char(&output); //defer free(output.array)
+        DynamicArray_char filename, output;
+        initDynamicArray_char(&filename); //defer free(filename.array);
+        initDynamicArray_char(&output); //defer free(output.array);
+
+        addStringToDynamicArray_char(&filename, "pads/");
+        DynamicArray_uint32_to_DynamicArray_char(pad_with, &filename);
+        addToDynamicArray_char(&filename, 0);
+
+        FILE *savefile = fopen(filename.array, "w");
         serialize_document(set, &output);
         fwrite(output.array, 1, output.length, savefile);
         fclose(savefile);
-        free(filename);
+        free(filename.array);
         free(output.array);
     }
 }
