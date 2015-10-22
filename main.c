@@ -1131,6 +1131,11 @@ login_insert_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
 {
     int line_nr = get_line_nr(&buffer->text, buffer->cursor);
 
+    if (letter>127)
+    {
+        return; //only ascii
+    }
+
     if (line_nr == 0)
     {
         int insert_pos = buffer->cursor - 10;
