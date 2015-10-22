@@ -969,7 +969,7 @@ update_buffer (TextInsertSet *set, TextBuffer *buffer)
 }
 
 void
-update_login_buffer (TextBuffer *buffer, DynamicArray_uint32 *username, DynamicArray_uint32 *password)
+update_login_buffer (TextBuffer *buffer, DynamicArray_uint32 *username, DynamicArray_uint32 *password, DynamicArray_uint32 *pad_with)
 {
     int i;
     buffer->text.length = 0;
@@ -980,6 +980,8 @@ update_login_buffer (TextBuffer *buffer, DynamicArray_uint32 *username, DynamicA
     {
         addToDynamicArray_uint32(&buffer->text, 42); //42 is '*'
     }
+    add_string_to_utf32_text(&buffer->text, "\npad with: ");
+    concatDynamicArrays_uint32(&buffer->text, pad_with);
 }
 
 int
@@ -1127,7 +1129,7 @@ delete_letter ( TextInsertSet *set, TextBuffer *buffer, network_data *network )
 
 
 void
-login_insert_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, DynamicArray_uint32 *password, Uint32 letter )
+login_insert_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, DynamicArray_uint32 *password, DynamicArray_uint32 *pad_with, Uint32 letter )
 {
     int line_nr = get_line_nr(&buffer->text, buffer->cursor);
 
@@ -1158,10 +1160,21 @@ login_insert_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
         insertIntoDynamicArray_uint32(password, letter, insert_pos);
         buffer->cursor = insert_pos + 10 + password_line_offset + 1;
     }
+    else if (line_nr == 2)
+    {
+        int pad_with_line_offset = seek_to_line(&buffer->text, 2);
+        int insert_pos = buffer->cursor - 10 - pad_with_line_offset;
+        if (insert_pos < 0)
+        {
+            insert_pos = pad_with->length;
+        }
+        insertIntoDynamicArray_uint32(pad_with, letter, insert_pos);
+        buffer->cursor = insert_pos + 10 + pad_with_line_offset + 1;
+    }
 }
 
 void
-login_delete_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, DynamicArray_uint32 *password )
+login_delete_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, DynamicArray_uint32 *password, DynamicArray_uint32 *pad_with )
 {
     int line_nr = get_line_nr(&buffer->text, buffer->cursor);
 
@@ -1182,6 +1195,17 @@ login_delete_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
         if (delete_pos >= 0)
         {
             deleteFromDynamicArray_uint32(password, delete_pos);
+            buffer->cursor--;
+        }
+    }
+
+    else if (line_nr == 2)
+    {
+        int pad_with_line_offset = seek_to_line(&buffer->text, 2);
+        int delete_pos = buffer->cursor - 10 - pad_with_line_offset - 1;
+        if (delete_pos >= 0)
+        {
+            deleteFromDynamicArray_uint32(pad_with, delete_pos);
             buffer->cursor--;
         }
     }
@@ -1316,10 +1340,11 @@ int main (void)
     initDynamicArray_ulong(&buffer.charPos_table);
 
     program_state = STATE_LOGIN;
-    add_string_to_utf32_text(&buffer.text, "username: \npassword: ");
-    DynamicArray_uint32 username, password;
+    add_string_to_utf32_text(&buffer.text, "username: \npassword: \npad with: ");
+    DynamicArray_uint32 username, password, pad_with;
     initDynamicArray_uint32(&username);
     initDynamicArray_uint32(&password);
+    initDynamicArray_uint32(&pad_with);
 
     //main loop
     int quit=0;
@@ -1361,9 +1386,9 @@ int main (void)
                     {
                         for (i=0; i<utf32_encoded.length; i++)
                         {
-                            login_insert_letter(&buffer, &username, &password, utf32_encoded.array[i]);
+                            login_insert_letter(&buffer, &username, &password, &pad_with, utf32_encoded.array[i]);
                         }
-                        update_login_buffer(&buffer, &username, &password);
+                        update_login_buffer(&buffer, &username, &password, &pad_with);
                     }
 
                 } break;
@@ -1397,8 +1422,8 @@ int main (void)
                                 }
                                 else if (program_state == STATE_LOGIN)
                                 {
-                                    login_delete_letter(&buffer, &username, &password);
-                                    update_login_buffer(&buffer, &username, &password);
+                                    login_delete_letter(&buffer, &username, &password, &pad_with);
+                                    update_login_buffer(&buffer, &username, &password, &pad_with);
                                 }
                             }
                         } break;
