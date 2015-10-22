@@ -102,6 +102,21 @@ string_compare (char *buffer1, char *buffer2, int length)
     return 1;
 }
 
+char *
+DynamicArray_uint32_to_string ( DynamicArray_uint32 *in_text )
+{
+    char *out_string = malloc(in_text->length+1);
+
+    int i;
+    for (i=0; i<in_text->length; i++)
+    {
+        out_string[i] = in_text->array[i];
+    }
+    out_string[in_text->length] = 0;
+
+    return out_string;
+}
+
 void
 add_string_to_utf32_text ( DynamicArray_uint32 *text, char *string)
 {
@@ -480,6 +495,23 @@ unserialize_document ( TextInsertSet *set, char *string, size_t length )
         length -= insert_length;
     }
     return 0;
+}
+
+void
+save_document ( TextInsertSet *set, DynamicArray_uint32 *pad_with )
+{
+    if (pad_with->length > 0)
+    {
+        char *filename = DynamicArray_uint32_to_string(pad_with); //defer free(filename)
+        FILE *savefile = fopen(filename, "w");
+        DynamicArray_char output;
+        initDynamicArray_char(&output); //defer free(output.array)
+        serialize_document(set, &output);
+        fwrite(output.array, 1, output.length, savefile);
+        fclose(savefile);
+        free(filename);
+        free(output.array);
+    }
 }
 
 void
@@ -1767,13 +1799,7 @@ int main (void)
 
     }
 
-    int savefile = open("/tmp/decasave", O_WRONLY|O_CREAT, 0777);
-    DynamicArray_char saveoutput;
-    initDynamicArray_char(&saveoutput);
-    serialize_document(&set, &saveoutput);
-    write(savefile, saveoutput.array, saveoutput.length);
-    free(saveoutput.array);
-    close(savefile);
+    save_document(&set, &pad_with);
 
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
