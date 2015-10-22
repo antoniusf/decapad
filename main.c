@@ -1437,9 +1437,17 @@ int main (void)
                             }
                             else if (program_state == STATE_LOGIN)
                             {
-                                buffer.cursor = 0;
-                                buffer.text.length = 0;
-                                program_state = STATE_PAD;
+                                if (username.length > 0 && pad_with.length > 0)
+                                {
+                                    buffer.cursor = 0;
+                                    buffer.text.length = 0;
+                                    program_state = STATE_PAD;
+                                }
+                                else
+                                {
+                                    int line_nr = get_line_nr(&buffer.text, buffer.cursor);
+                                    buffer.cursor = seek_to_line(&buffer.text, line_nr+1);
+                                }
                             }
                         } break;
 
