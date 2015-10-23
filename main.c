@@ -1605,9 +1605,20 @@ int main (void)
                                     DynamicArray_uint32 utf32_encoded;
                                     initDynamicArray_uint32(&utf32_encoded);
                                     utf8_to_utf32(clipboard_content, &utf32_encoded);
-                                    for (i=0; i<utf32_encoded.length; i++)
+                                    if (program_state == STATE_PAD)
                                     {
-                                        insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
+                                        for (i=0; i<utf32_encoded.length; i++)
+                                        {
+                                            insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
+                                        }
+                                    }
+                                    else if (program_state == STATE_LOGIN)
+                                    {
+                                        for (i=0; i<utf32_encoded.length; i++)
+                                        {
+                                            login_insert_letter(&buffer, &username, &password, &pad_with, utf32_encoded.array[i]);
+                                            update_login_buffer(&buffer, &username, &password, &pad_with);
+                                        }
                                     }
 
                                     free(clipboard_content);
