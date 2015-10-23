@@ -1252,6 +1252,8 @@ login_insert_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
         insertIntoDynamicArray_uint32(pad_with, letter, insert_pos);
         buffer->cursor = insert_pos + 10 + pad_with_line_offset + 1;
     }
+
+    update_login_buffer(buffer, username, password, pad_with);
 }
 
 void
@@ -1469,7 +1471,6 @@ int main (void)
                         {
                             login_insert_letter(&buffer, &username, &password, &pad_with, utf32_encoded.array[i]);
                         }
-                        update_login_buffer(&buffer, &username, &password, &pad_with);
                     }
 
                 } break;
@@ -1617,7 +1618,6 @@ int main (void)
                                         for (i=0; i<utf32_encoded.length; i++)
                                         {
                                             login_insert_letter(&buffer, &username, &password, &pad_with, utf32_encoded.array[i]);
-                                            update_login_buffer(&buffer, &username, &password, &pad_with);
                                         }
                                     }
 
