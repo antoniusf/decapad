@@ -325,7 +325,7 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t 
     string += 5;
     total_length += 5;
 
-    total_length += insert.length;
+    total_length += insert.length*5;
 
     if (maxlength < total_length)
     {
@@ -371,6 +371,11 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t 
 
     else
     {
+        if (insert.selfID >= ID_start && insert.selfID <= ID_end)
+        {
+            printf("Insert unserialization failed due to invalid insert ID: The insert would be newly created, but its ID lies within our ID range.\n");
+            return -1;
+        }
         addToTextInsertSet(set, insert);
     }
     
@@ -506,11 +511,55 @@ save_document ( TextInsertSet *set, DynamicArray_uint32 *pad_with )
         addToDynamicArray_char(&filename, 0);
 
         FILE *savefile = fopen(filename.array, "w");
+
+        append_base85_enc_uint32(author_ID, &output);
+        append_base85_enc_uint32(ID_start, &output);
+        append_base85_enc_uint32(ID_end, &output);
         serialize_document(set, &output);
+
         fwrite(output.array, 1, output.length, savefile);
         fclose(savefile);
         free(filename.array);
         free(output.array);
+    }
+}
+
+void
+load_document ( TextInsertSet *set, DynamicArray_uint32 *pad_with )
+{
+    if (pad_with->length > 0)
+    {
+        DynamicArray_char filename, content;
+        initDynamicArray_char(&filename); //defer free(filename.array);
+        initDynamicArray_char(&content); //defer free(content.array);
+
+        addStringToDynamicArray_char(&filename, "pads/");
+        DynamicArray_uint32_to_DynamicArray_char(pad_with, &filename);
+        addToDynamicArray_char(&filename, 0);
+
+        FILE *savefile = fopen(filename.array, "r");
+        if (savefile)
+        {
+            fseek(savefile, 0, SEEK_END);
+            long length = ftell(savefile);
+            fseek(savefile, 0, SEEK_SET);
+
+            content.array = realloc(content.array, length);
+            content.allocated_length = length;
+            content.length = length;
+
+            fread(content.array, 1, length, savefile);
+
+            fclose(savefile);
+
+            author_ID = base85_dec_uint32(content.array);
+            ID_start = base85_dec_uint32(content.array+5);
+            ID_end = base85_dec_uint32(content.array+10);
+            unserialize_document(set, content.array+15, length-15);
+
+            free(filename.array);
+            free(content.array);
+        }
     }
 }
 
@@ -1442,6 +1491,9 @@ int main (void)
                                     buffer.cursor = 0;
                                     buffer.text.length = 0;
                                     program_state = STATE_PAD;
+
+                                    load_document(&set, &pad_with);
+                                    update_buffer(&set, &buffer);
                                 }
                                 else
                                 {
