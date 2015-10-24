@@ -296,7 +296,7 @@ Sint64
 unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t *return_insert_length)
 {
 
-    int total_length = 0;
+    size_t total_length = 0;
 
     if (maxlength < 20)
     {
@@ -453,7 +453,7 @@ send_insert ( TextInsert *insert, network_data *network )
 
     if (!enqueued)
     {
-        printf("Enqueueing insert %lu at %lu.\n", insert->selfID, insert);
+        printf("Enqueueing insert %lu at %lu.\n", (long unsigned int) insert->selfID, (long unsigned int) insert);
         if (network->send_queue_free_slots.length == 0)
         {
             addToDynamicArray_ulong(&network->send_queue, insert->selfID);
@@ -1874,7 +1874,7 @@ int main (void)
                 if (network.send_queue.array[i] != 0)
                 {
                     resend_insert = set.array + getInsertByID(&set, network.send_queue.array[i]);
-                    printf("Resending insert %lu at %lu.\n", resend_insert->selfID, resend_insert);
+                    printf("Resending insert %lu at %lu.\n", (long unsigned int) resend_insert->selfID, (long unsigned int) resend_insert);
                     send_insert(resend_insert, &network);
                 }
             }
