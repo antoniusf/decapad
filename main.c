@@ -50,7 +50,7 @@ typedef struct network_data
 {
     int read_fifo;
     int write_fifo;
-    int init_received;
+    int wait_for_init;
     DynamicArray_ulong send_queue;
     DynamicArray_pointer send_queue_free_slots;
 } network_data;
@@ -1338,7 +1338,7 @@ int main (void)
     ID_end = 1024;
 
     network_data network;
-    network.init_received = 1;
+    network.wait_for_init = 0;
     initDynamicArray_ulong(&network.send_queue);
     initDynamicArray_pointer(&network.send_queue_free_slots);
 
@@ -1362,7 +1362,7 @@ int main (void)
 
             network.write_fifo = open("/tmp/deca_channel_1", O_WRONLY);
             send_init_request(&network);
-            network.init_received = 0;
+            network.wait_for_init = 1;
             network.read_fifo = open("/tmp/deca_channel_2", O_RDONLY | O_NONBLOCK);
         }
 
@@ -1794,18 +1794,33 @@ int main (void)
 
                 if (string_compare(input, "Init", 4))
                 {
-                    if (length != 4+5+5+2)
+                    if (network.wait_for_init)
                     {
-                        printf("Invalid data length!\n");
-                    }
+                        if (length == 4+5+5+2)
+                        {
+                            if (check_base32_crc8_0x97(input, length) == 0)
+                            {
+                                author_ID = ID_start = base85_dec_uint32(input+4);
+                                ID_end = base85_dec_uint32(input+9);
 
-                    if (check_base32_crc8_0x97(input, length) == 0)
+                                network.wait_for_init = 0;
+                            }
+                        }
+
+                        else
+                        {
+                            printf("Invalid data length!\n");
+                        }
+
+                    }
+                }
+
+                else if (string_compare(input, "deny", 4))
+                {
+                    if (network.wait_for_init)
                     {
-                        author_ID = ID_start = base85_dec_uint32(input+4);
-                        ID_end = base85_dec_uint32(input+9);
+                        network.wait_for_init = 0;
                     }
-
-                    network.init_received = 1;
                 }
 
                 else if (string_compare(input, "inrq", 4))
@@ -1882,7 +1897,7 @@ int main (void)
                 }
             }
 
-            if (!network.init_received)
+            if (network.wait_for_init)
             {
                 send_init_request(&network);
             }
