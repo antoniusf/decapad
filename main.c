@@ -50,7 +50,7 @@ typedef struct network_data
 {
     int read_fifo;
     int write_fifo;
-    int init_acknowledged;
+    int init_received;
     DynamicArray_ulong send_queue;
     DynamicArray_pointer send_queue_free_slots;
 } network_data;
@@ -420,6 +420,13 @@ send_init (network_data *network)
         }
     }
     printf("Sending init failed for unknown reasons\n");
+}
+
+void
+send_init_request (network_data *network)
+{
+    char init_request[] = "[len]inrq";
+    send_data(init_request, 9, network);
 }
 
 int
@@ -1331,7 +1338,7 @@ int main (void)
     ID_end = 1024;
 
     network_data network;
-    network.init_acknowledged = 1;
+    network.init_received = 1;
     initDynamicArray_ulong(&network.send_queue);
     initDynamicArray_pointer(&network.send_queue_free_slots);
 
@@ -1354,8 +1361,8 @@ int main (void)
             }
 
             network.write_fifo = open("/tmp/deca_channel_1", O_WRONLY);
-            char init_request[] = "[len]inrq";
-            send_data(init_request, 9, &network);
+            send_init_request(&network);
+            network.init_received = 0;
             network.read_fifo = open("/tmp/deca_channel_2", O_RDONLY | O_NONBLOCK);
         }
 
@@ -1796,16 +1803,17 @@ int main (void)
                     {
                         author_ID = ID_start = base85_dec_uint32(input+4);
                         ID_end = base85_dec_uint32(input+9);
-                        //ack init
-                        char ack_message[] = "[len]acki";
-                        send_data(ack_message, 9, &network);
                     }
+
+                    network.init_received = 1;
                 }
 
                 else if (string_compare(input, "inrq", 4))
                 {
-                    network.write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
-                    network.init_acknowledged = 0;
+                    if (network.write_fifo == -1)
+                    {
+                        network.write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
+                    }
                     send_init(&network);
                 }
 
@@ -1845,11 +1853,6 @@ int main (void)
                         }
                     }
                 }
-                else if (string_compare(input, "acki", 4))
-                {
-                    network.init_acknowledged = 1;
-                }
-
 
                 free(input);
             }
@@ -1879,9 +1882,9 @@ int main (void)
                 }
             }
 
-            if (network.init_acknowledged == 0)
+            if (!network.init_received)
             {
-                send_init(&network);
+                send_init_request(&network);
             }
         }
 
