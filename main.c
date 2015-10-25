@@ -429,23 +429,10 @@ send_init_request (network_data *network)
     send_data(init_request, 9, network);
 }
 
-int
-send_insert ( TextInsert *insert, network_data *network )
+void
+enqueue_insert ( TextInsert *insert, network_data *network )
 {
-    DynamicArray_char message, messagelength;
-    initDynamicArray_char(&message);
-    initDynamicArray_char(&messagelength);
-
-    addStringToDynamicArray_char(&message, "[len]data");
-    serialize_insert(insert, &message);
-
-    Uint8 crc_value = crc8_0x97(&message.array[5], message.length-5);
-    addStringToDynamicArray_char(&message, "..");
-    base32_enc_crc(crc_value, &message.array[message.length-2]);
-
-    send_data(message.array, message.length, network);
-
-    //enqueue insert pointer if not alread in queue
+    //check if it is already enqueued
     int i;
     int enqueued = 0;
     for (i=0; i < network->send_queue.length; i++)
@@ -473,10 +460,30 @@ send_insert ( TextInsert *insert, network_data *network )
             *free_slot = insert->selfID;
         }
     }
+}
+
+int
+send_insert ( TextInsert *insert, network_data *network )
+{
+    DynamicArray_char message, messagelength;
+    initDynamicArray_char(&message);
+    initDynamicArray_char(&messagelength);
+
+    addStringToDynamicArray_char(&message, "[len]data");
+    serialize_insert(insert, &message);
+
+    Uint8 crc_value = crc8_0x97(&message.array[5], message.length-5);
+    addStringToDynamicArray_char(&message, "..");
+    base32_enc_crc(crc_value, &message.array[message.length-2]);
+
+    send_data(message.array, message.length, network);
+
+    enqueue_insert(insert, network);
 
     free(message.array);
     return 0;
 }
+
 
 void
 serialize_document ( TextInsertSet *set, DynamicArray_char *output )
