@@ -51,8 +51,7 @@ typedef struct network_data
     int read_fifo;
     int write_fifo;
     int wait_for_init;
-    DynamicArray_ulong send_queue;
-    DynamicArray_pointer send_queue_free_slots;
+    DynamicArray_uint32 send_queue;
 } network_data;
 
 int
@@ -448,17 +447,8 @@ enqueue_insert ( TextInsert *insert, network_data *network )
     if (!enqueued)
     {
         printf("Enqueueing insert %lu at %lu.\n", (long unsigned int) insert->selfID, (long unsigned int) insert);
-        if (network->send_queue_free_slots.length == 0)
-        {
-            addToDynamicArray_ulong(&network->send_queue, insert->selfID);
-        }
-        else
-        {
-            //pop a free slot and fill it with the insert ID
-            insertID *free_slot = network->send_queue_free_slots.array[network->send_queue_free_slots.length - 1];
-            network->send_queue_free_slots.length--;
-            *free_slot = insert->selfID;
-        }
+
+        addToDynamicArray_uint32(&network->send_queue, insert->selfID);
     }
 }
 
@@ -1346,8 +1336,7 @@ int main (void)
 
     network_data network;
     network.wait_for_init = 0;
-    initDynamicArray_ulong(&network.send_queue);
-    initDynamicArray_pointer(&network.send_queue_free_slots);
+    initDynamicArray_uint32(&network.send_queue);
 
     int read_channel;
     network.write_fifo = -1;
@@ -1867,9 +1856,7 @@ int main (void)
                         {
                             if ( network.send_queue.array[i] == ack_id )
                             {
-                                //remove insert from the queue and mark its spot as free
-                                addToDynamicArray_pointer(&network.send_queue_free_slots, network.send_queue.array + i);
-                                network.send_queue.array[i] = 0;
+                                deleteFromDynamicArray_uint32(&network.send_queue, i);
                                 break;
                             }
                         }
@@ -1888,20 +1875,19 @@ int main (void)
         }
 
         //resend un-ACKed inserts
-        if (resend_timer >= 10000) //every ten seconds
+        if (resend_timer >= 500)
         {
             resend_timer = 0;
 
-            TextInsert *resend_insert;
-            int i;
-            for(i=0; i<network.send_queue.length; i++)
+            if (network.send_queue.length > 0)
             {
-                if (network.send_queue.array[i] != 0)
-                {
-                    resend_insert = set.array + getInsertByID(&set, network.send_queue.array[i]);
-                    printf("Resending insert %lu at %lu.\n", (long unsigned int) resend_insert->selfID, (long unsigned int) resend_insert);
-                    send_insert(resend_insert, &network);
-                }
+                Uint32 insert_ID = network.send_queue.array[0];
+                TextInsert *resend_insert = set.array + getInsertByID(&set, insert_ID);
+                //printf("Resending insert %lu at %lu.\n", (long unsigned int) resend_insert->selfID, (long unsigned int) resend_insert);
+                send_insert(resend_insert, &network);
+
+                deleteFromDynamicArray_uint32(&network.send_queue, 0);
+                addToDynamicArray_uint32(&network.send_queue, insert_ID);
             }
 
             if (network.wait_for_init)
