@@ -73,7 +73,7 @@ get_string_length (char *buffer) //*not* counting the 0 at the end
 }
 
 
-void
+/*void
 string_concat (char **buffer1, char **buffer2) //result will be in buffer1, both buffers must be 0-terminated
 {
     int length1, length2, i;
@@ -85,12 +85,13 @@ string_concat (char **buffer1, char **buffer2) //result will be in buffer1, both
         *(*buffer1+length1+i) = *(*buffer2+i);
     }
     return;
-}
+}*/
 
 int
-string_compare (char *buffer1, char *buffer2, int length)
+string_compare (char *buffer1, int length1, char *buffer2, int length2)
 {
     int i;
+    int length = fmin(length1, length2);
     for (i=0; i<length; i++)
     {
         if (buffer1[i] != buffer2[i])
@@ -1784,80 +1785,87 @@ int main (void)
                 Uint32 length = base85_dec_uint32(base85_length);
 
                 char *input = malloc(length);
-                read(network.read_fifo, input, length);
-
-                printf("Received message of length %i: %.*s\n", length, length, input);
-
-                if (string_compare(input, "Init", 4))
+                ssize_t actual_length = read(network.read_fifo, input, length);
+                if (actual_length != length)
                 {
-                    if (network.wait_for_init)
-                    {
-                        if (length == 4+5+5+2)
-                        {
-                            if (check_base32_crc8_0x97(input, length) == 0)
-                            {
-                                author_ID = ID_start = base85_dec_uint32(input+4);
-                                ID_end = base85_dec_uint32(input+9);
+                    printf("Given message length and actual message length did not match. Message is not processed.\n");
+                }
+                else
+                {
 
-                                network.wait_for_init = 0;
+                    printf("Received message of length %i: %.*s\n", length, length, input);
+
+                    if (string_compare(input, length, "Init", 4))
+                    {
+                        if (network.wait_for_init)
+                        {
+                            if (length == 4+5+5+2)
+                            {
+                                if (check_base32_crc8_0x97(input, length) == 0)
+                                {
+                                    author_ID = ID_start = base85_dec_uint32(input+4);
+                                    ID_end = base85_dec_uint32(input+9);
+
+                                    network.wait_for_init = 0;
+                                }
+                            }
+
+                            else
+                            {
+                                printf("Invalid data length!\n");
+                            }
+
+                        }
+                    }
+
+                    else if (string_compare(input, length, "deny", 4))
+                    {
+                        if (network.wait_for_init)
+                        {
+                            network.wait_for_init = 0;
+                        }
+                    }
+
+                    else if (string_compare(input, length, "inrq", 4))
+                    {
+                        if (network.write_fifo == -1)
+                        {
+                            network.write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
+                        }
+                        send_init(&network);
+                    }
+
+                    else if (string_compare(input, length, "data", 4))
+                    {
+                        if (check_base32_crc8_0x97(input, length) == 0)
+                        {
+                            size_t insert_length;
+                            Sint64 insert_ID = unserialize_insert(&set, input+4, length-4, &insert_length);
+                            update_buffer(&set, &buffer);
+
+                            if(insert_ID >= 0)
+                            {
+                                //ACK
+                                char ack[14] = "*****ack *****";
+                                base85_enc_uint32(insert_ID, ack+9);
+                                send_data(ack, 14, &network);
                             }
                         }
+                    }
 
-                        else
+                    else if (string_compare(input, length, "ack ", 4))
+                    {
+                        if (length == 4+5)
                         {
-                            printf("Invalid data length!\n");
-                        }
-
-                    }
-                }
-
-                else if (string_compare(input, "deny", 4))
-                {
-                    if (network.wait_for_init)
-                    {
-                        network.wait_for_init = 0;
-                    }
-                }
-
-                else if (string_compare(input, "inrq", 4))
-                {
-                    if (network.write_fifo == -1)
-                    {
-                        network.write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
-                    }
-                    send_init(&network);
-                }
-
-                else if (string_compare(input, "data", 4))
-                {
-                    if (check_base32_crc8_0x97(input, length) == 0)
-                    {
-                        size_t insert_length;
-                        Sint64 insert_ID = unserialize_insert(&set, input+4, length-4, &insert_length);
-                        update_buffer(&set, &buffer);
-
-                        if(insert_ID >= 0)
-                        {
-                            //ACK
-                            char ack[14] = "*****ack *****";
-                            base85_enc_uint32(insert_ID, ack+9);
-                            send_data(ack, 14, &network);
-                        }
-                    }
-                }
-
-                else if (string_compare(input, "ack ", 4))
-                {
-                    if (length == 4+5)
-                    {
-                        int i;
-                        Uint32 ack_id = base85_dec_uint32(input+4);
-                        for (i=0; i < network.send_queue.length; i++)
-                        {
-                            if ( network.send_queue.array[i] == ack_id )
+                            int i;
+                            Uint32 ack_id = base85_dec_uint32(input+4);
+                            for (i=0; i < network.send_queue.length; i++)
                             {
-                                deleteFromDynamicArray_uint32(&network.send_queue, i);
-                                break;
+                                if ( network.send_queue.array[i] == ack_id )
+                                {
+                                    deleteFromDynamicArray_uint32(&network.send_queue, i);
+                                    break;
+                                }
                             }
                         }
                     }
