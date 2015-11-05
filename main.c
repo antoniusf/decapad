@@ -13,6 +13,13 @@
 
 #define SETPIXEL(x, y, value) ( *(pixels+(x)+(y)*pitch) = (value) )
 
+/* Non-codified assumptions in this program
+ *
+ * I dislike making assumptions about the state of things that are not explicitly codified in the actual code. However, for the following assumptions, I have not yet found an elegant way to do that, so this header will have to suffice.
+ *
+ * Error handling: Every function that can generate an error takes the argument int *error; the variable name error is only used for this purpose. The function modifies the value pointed to only by setting it to 1, if an error occured. The calling function calls this value local_error and initializes it to 0. Again, local_error is not used for any other purpose. For taking back error codes from other libraries we interface with, which do not necessarily conform to this specification, if_error is used.
+ */
+
 Uint64 ID_start;
 Uint64 ID_end;
 Uint64 author_ID;
@@ -254,7 +261,7 @@ append_base85_enc_uint32 ( Uint32 input, DynamicArray_char *output )
 }
 
 Uint32
-base85_dec_uint32 ( char *input )
+base85_dec_uint32 ( char *input, int *error )
 {
     Uint32 decoded = 0;
 
@@ -264,7 +271,8 @@ base85_dec_uint32 ( char *input )
         if ( (input[i] < 42) || (input[i] > 126) )
         {
             printf("The Base85 Uint32 decoder encountered an invalid input string.\n");
-            return 0;//TODO: error handling
+            *error = 1;
+            return 0;
         }
     }
 
@@ -302,8 +310,8 @@ serialize_insert ( TextInsert *insert, DynamicArray_char *output )
     }
 }
 
-Sint64
-unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t *return_insert_length)
+Uint32
+unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t *return_insert_length, int *error)
 {
 
     size_t total_length = 0;
@@ -311,43 +319,67 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t 
     if (maxlength < 20)
     {
         printf("Serialized insert string is definitely too short, cannot even read the header!\n");
-        return -1;
+        *error = 1;
+        return 0;
     }
 
     TextInsert insert;
 
-    insert.selfID = base85_dec_uint32(string);
-    string += 5;
-    total_length += 5;
+    {
+        int local_error = 0;
 
-    insert.parentID = base85_dec_uint32(string);
-    string += 5;
-    total_length += 5;
+        insert.selfID = base85_dec_uint32(string, &local_error);
+        string += 5;
+        total_length += 5;
 
-    insert.author = base85_dec_uint32(string);
-    string += 5;
-    total_length += 5;
+        insert.parentID = base85_dec_uint32(string, &local_error);
+        string += 5;
+        total_length += 5;
 
-    Uint32 mix = base85_dec_uint32(string);
-    insert.charPos = (mix>>16)&0xFFFF;
-    insert.length = mix&0xFFFF;
-    insert.lock = (mix>>31)&1;
-    string += 5;
-    total_length += 5;
+        insert.author = base85_dec_uint32(string, &local_error);
+        string += 5;
+        total_length += 5;
+
+        Uint32 mix = base85_dec_uint32(string, &local_error);
+        insert.charPos = (mix>>16)&0xFFFF;
+        insert.length = mix&0xFFFF;
+        insert.lock = (mix>>31)&1;
+        string += 5;
+        total_length += 5;
+
+        if (local_error)
+        {
+            printf("Can't unserialize insert.\n");
+            *error = 1;
+            return 0;
+        }
+    }
 
     total_length += insert.length*5;
 
     if (maxlength < total_length)
     {
         printf("Serialized insert string is too short for insert content.\n");
-        return -1;
+        *error = 1;
+        return 0;
     }
 
-    insert.content = malloc(insert.length*sizeof(Uint32));
-    int i;
-    for (i=0; i<insert.length; i++)
     {
-        insert.content[i] = base85_dec_uint32(string+i*5);
+        int local_error = 0;
+
+        insert.content = malloc(insert.length*sizeof(Uint32));
+        int i;
+        for (i=0; i<insert.length; i++)
+        {
+            insert.content[i] = base85_dec_uint32(string+i*5, &local_error);
+        }
+
+        if (local_error)
+        {
+            printf("Could not unserialize insert, content encoding is wrong.\n");
+            *error = 1;
+            return 0;
+        }
     }
 
     long old_insert_pos = getInsertByID(set, insert.selfID);
@@ -384,7 +416,8 @@ unserialize_insert ( TextInsertSet *set, char *string, size_t maxlength, size_t 
         if (insert.selfID >= ID_start && insert.selfID <= ID_end)
         {
             printf("Insert unserialization failed due to invalid insert ID: The insert would be newly created, but its ID lies within our ID range.\n");
-            return -1;
+            *error = 1;
+            return 0;
         }
         addToTextInsertSet(set, insert);
     }
@@ -496,20 +529,21 @@ serialize_document ( TextInsertSet *set, DynamicArray_char *output )
     }
 }
 
-int
-unserialize_document ( TextInsertSet *set, char *string, size_t length )
+void
+unserialize_document ( TextInsertSet *set, char *string, size_t length, int *error )
 {
     size_t insert_length;
+    int local_error = 0;
     while ( length > 0 )
     {
-        if ( unserialize_insert( set, string, length, &insert_length ) == -1 )
-        {
-            return -1;
-        }
+        unserialize_insert( set, string, length, &insert_length, &local_error );
         string += insert_length;
         length -= insert_length;
     }
-    return 0;
+    if (local_error)
+    {
+        *error = 1;
+    }
 }
 
 void
@@ -567,10 +601,18 @@ load_document ( TextInsertSet *set, DynamicArray_uint32 *pad_with )
 
             fclose(savefile);
 
-            author_ID = base85_dec_uint32(content.array);
-            ID_start = base85_dec_uint32(content.array+5);
-            ID_end = base85_dec_uint32(content.array+10);
-            unserialize_document(set, content.array+15, length-15);
+            int local_error = 0;
+
+            author_ID = base85_dec_uint32(content.array, &local_error);
+            ID_start = base85_dec_uint32(content.array+5, &local_error);
+            ID_end = base85_dec_uint32(content.array+10, &local_error);
+
+            unserialize_document(set, content.array+15, length-15, &local_error);
+            if (local_error)
+            {
+                printf("Could not load the saved document, it appears to be corrupted.\n");
+            }
+
 
             free(filename.array);
             free(content.array);
@@ -682,7 +724,7 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
     int x = buffer->x;
     int y = buffer->line_y + buffer->y_padding;
     int zero_x = x;
-    int error;
+    int if_error;
     int height = (int) fontface->size->metrics.height / 64;
     y += height;
 
@@ -709,14 +751,14 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
             {
                 int lk_i = i;
                 int lookahead_x = x;
-                error = FT_Load_Char(fontface, text[lk_i], FT_LOAD_DEFAULT);
+                if_error = FT_Load_Char(fontface, text[lk_i], FT_LOAD_DEFAULT);
                 lookahead_x += fontface->glyph->advance.x / 64;
 
                 lk_i++;
 
                 for (; (lk_i < buffer->text.length) && (text[lk_i] != 32) && (text[lk_i] != 10); lk_i++)
                 {
-                    error = FT_Load_Char(fontface, text[lk_i], FT_LOAD_RENDER);
+                    if_error = FT_Load_Char(fontface, text[lk_i], FT_LOAD_RENDER);
                     lookahead_x += fontface->glyph->advance.x / 64;
 
                     if (lookahead_x > window_width)
@@ -735,11 +777,11 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
             if (previous_glyph_index)
             {
                 FT_Vector kerning;
-                error = FT_Get_Kerning(fontface, previous_glyph_index, glyph_index, FT_KERNING_DEFAULT, &kerning);
+                if_error = FT_Get_Kerning(fontface, previous_glyph_index, glyph_index, FT_KERNING_DEFAULT, &kerning);
                 x += kerning.x / 64;
             }
             previous_glyph_index = glyph_index;
-            error = FT_Load_Glyph ( fontface, glyph_index, FT_LOAD_RENDER );
+            if_error = FT_Load_Glyph ( fontface, glyph_index, FT_LOAD_RENDER );
 
             FT_Bitmap bitmap = fontface->glyph->bitmap;
             int advance = fontface->glyph->advance.x >> 6;
@@ -1334,7 +1376,7 @@ login_delete_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
 int main (void)
 {
 
-    int error;
+    int if_error;
 
     //CRC table computation
     crc8_0x97_fill_table();
@@ -1352,16 +1394,16 @@ int main (void)
     int read_channel;
     network.write_fifo = -1;
 
-    error = mkfifo( "/tmp/deca_channel_1", 0777 );
-    if (error == -1)
+    if_error = mkfifo( "/tmp/deca_channel_1", 0777 );
+    if (if_error == -1)
     {
         if ( errno == EEXIST )
         {
             //read channel is channel 2
-            error = mkfifo( "/tmp/deca_channel_2", 0777 );
+            if_error = mkfifo( "/tmp/deca_channel_2", 0777 );
             read_channel = 2;
 
-            if ( error == -1 )
+            if ( if_error == -1 )
             {
                 printf("FIFO creation failed.\n");
                 return 1;
@@ -1389,22 +1431,22 @@ int main (void)
     //Freetype setup
     
     FT_Library ft_library;
-    error = FT_Init_FreeType( &ft_library);
-    if (error)
+    if_error = FT_Init_FreeType( &ft_library);
+    if (if_error)
     {
         printf("FreeType initialization failed.\n");
         return 1;
     }
 
     FT_Face fontface;
-    error = FT_New_Face( ft_library, "ClearSans-Regular.ttf", 0, &fontface);
-    if ( error )
+    if_error = FT_New_Face( ft_library, "ClearSans-Regular.ttf", 0, &fontface);
+    if ( if_error )
     {
         printf("Font could not be loaded.\n");
         return 1;
     }
 
-    error = FT_Set_Pixel_Sizes(fontface, 0, 24);
+    if_error = FT_Set_Pixel_Sizes(fontface, 0, 24);
 
     int line_height = (int) fontface->size->metrics.height / 64;
 
@@ -1792,96 +1834,113 @@ int main (void)
             char *base85_length = malloc(5);
             if (read(network.read_fifo, base85_length, 5) == 5)
             {
-                Uint32 length = base85_dec_uint32(base85_length);
-
-                char *input = malloc(length);
-                ssize_t actual_length = read(network.read_fifo, input, length);
-                if (actual_length != length)
+                int local_error = 0;
+                Uint32 length = base85_dec_uint32(base85_length, &local_error);
+                if (local_error)
                 {
-                    printf("Given message length and actual message length did not match. Message is not processed.\n");
+                    printf("Got message with invalid length encoding. Ignore it.\n");
                 }
+
                 else
                 {
 
-                    printf("Received message of length %i: %.*s\n", length, length, input);
-
-                    if (string_compare(input, length, "Init", 4))
+                    char *input = malloc(length);
+                    ssize_t actual_length = read(network.read_fifo, input, length);
+                    if (actual_length != length)
                     {
-                        if (network.wait_for_init)
-                        {
-                            if (length == 4+5+5+2)
-                            {
-                                if (check_base32_crc8_0x97(input, length) == 0)
-                                {
-                                    author_ID = ID_start = base85_dec_uint32(input+4);
-                                    ID_end = base85_dec_uint32(input+9);
+                        printf("Given message length and actual message length did not match. Message is not processed.\n");
+                    }
+                    else
+                    {
 
-                                    network.wait_for_init = 0;
+                        printf("Received message of length %i: %.*s\n", length, length, input);
+
+                        if (string_compare(input, length, "Init", 4))
+                        {
+                            if (network.wait_for_init)
+                            {
+                                if (length == 4+5+5+2)
+                                {
+                                    if (check_base32_crc8_0x97(input, length) == 0)
+                                    {
+                                        int local_error = 0;
+                                        author_ID = ID_start = base85_dec_uint32(input+4, &local_error);
+                                        ID_end = base85_dec_uint32(input+9, &local_error);
+                                        if (!local_error)
+                                        {
+                                            network.wait_for_init = 0;
+                                        }
+                                    }
                                 }
-                            }
 
-                            else
-                            {
-                                printf("Invalid data length!\n");
-                            }
-
-                        }
-                    }
-
-                    else if (string_compare(input, length, "deny", 4))
-                    {
-                        if (network.wait_for_init)
-                        {
-                            network.wait_for_init = 0;
-                        }
-                    }
-
-                    else if (string_compare(input, length, "inrq", 4))
-                    {
-                        if (network.write_fifo == -1)
-                        {
-                            network.write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
-                        }
-                        send_init(&network);
-                    }
-
-                    else if (string_compare(input, length, "data", 4))
-                    {
-                        if (check_base32_crc8_0x97(input, length) == 0)
-                        {
-                            size_t insert_length;
-                            Sint64 insert_ID = unserialize_insert(&set, input+4, length-4, &insert_length);
-                            update_buffer(&set, &buffer);
-
-                            if(insert_ID >= 0)
-                            {
-                                //ACK
-                                char ack[14] = "*****ack *****";
-                                base85_enc_uint32(insert_ID, ack+9);
-                                send_data(ack, 14, &network);
-                            }
-                        }
-                    }
-
-                    else if (string_compare(input, length, "ack ", 4))
-                    {
-                        if (length == 4+5)
-                        {
-                            int i;
-                            Uint32 ack_id = base85_dec_uint32(input+4);
-                            for (i=0; i < network.send_queue.length; i++)
-                            {
-                                if ( network.send_queue.array[i] == ack_id )
+                                else
                                 {
-                                    deleteFromDynamicArray_uint32(&network.send_queue, i);
-                                    break;
+                                    printf("Invalid data length!\n");
+                                }
+
+                            }
+                        }
+
+                        else if (string_compare(input, length, "deny", 4))
+                        {
+                            if (network.wait_for_init)
+                            {
+                                network.wait_for_init = 0;
+                            }
+                        }
+
+                        else if (string_compare(input, length, "inrq", 4))
+                        {
+                            if (network.write_fifo == -1)
+                            {
+                                network.write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
+                            }
+                            send_init(&network);
+                        }
+
+                        else if (string_compare(input, length, "data", 4))
+                        {
+                            if (check_base32_crc8_0x97(input, length) == 0)
+                            {
+                                size_t insert_length;
+                                int local_error = 0;
+                                Uint32 insert_ID = unserialize_insert(&set, input+4, length-4, &insert_length, &local_error);
+                                update_buffer(&set, &buffer);
+
+                                if(!local_error)
+                                {
+                                    //ACK
+                                    char ack[14] = "*****ack *****";
+                                    base85_enc_uint32(insert_ID, ack+9);
+                                    send_data(ack, 14, &network);
                                 }
                             }
                         }
+
+                        else if (string_compare(input, length, "ack ", 4))
+                        {
+                            if (length == 4+5)
+                            {
+                                int i;
+                                int local_error = 0;
+                                Uint32 ack_id = base85_dec_uint32(input+4, &local_error);
+                                if (!local_error)
+                                {
+                                    for (i=0; i < network.send_queue.length; i++)
+                                    {
+                                        if ( network.send_queue.array[i] == ack_id )
+                                        {
+                                            deleteFromDynamicArray_uint32(&network.send_queue, i);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
+
+                    free(input);
                 }
-
-                free(input);
             }
             free(base85_length);
 
