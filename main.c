@@ -258,6 +258,16 @@ base85_dec_uint32 ( char *input )
 {
     Uint32 decoded = 0;
 
+    int i;
+    for (i=0; i<5; i++)
+    {
+        if ( (input[i] < 42) || (input[i] > 126) )
+        {
+            printf("The Base85 Uint32 decoder encountered an invalid input string.\n");
+            return 0;//TODO: error handling
+        }
+    }
+
     decoded += input[4] - 42;
     decoded *= 85;
     
