@@ -1,6 +1,8 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,8 +50,8 @@ typedef struct TextBuffer TextBuffer;
 
 typedef struct network_data
 {
-    int read_fifo;
-    int write_fifo;
+    int own_socket;
+    int other_socket;
     int wait_for_init;
     DynamicArray_uint32 send_queue;
     int send_now;
@@ -405,7 +407,7 @@ send_data ( char *data, size_t length, network_data *network ) //data must have 
 
     base85_enc_uint32(length-5, data);
 
-    if ( write(network->write_fifo, data, length) < 0 )
+    if ( send(network->own_socket, data, length, 0) < 0 )
     {
         printf("Sending data failed.\n");
         return -1;
@@ -1354,41 +1356,53 @@ int main (void)
     network.send_now = 0;
     initDynamicArray_uint32(&network.send_queue);
 
-    int read_channel;
-    network.write_fifo = -1;
+    network.own_socket = socket(AF_UNIX, SOCK_DGRAM|SOCK_NONBLOCK, 0);
 
-    error = mkfifo( "/tmp/deca_channel_1", 0777 );
-    if (error == -1)
+    if (network.own_socket == -1)
     {
-        if ( errno == EEXIST )
+        printf("Failed to create socket.\n");
+        return 1;
+    }
+
+    if (access("/tmp/deca_socket_1", F_OK) == -1)
+    {
+
+        struct sockaddr_un own_address;
+        own_address.sun_family = AF_UNIX;
+        own_address.sun_path = "/tmp/deca_socket_1";
+        error = bind(network.own_socket, &own_address, sizeof(own_address));
+        if (error == -1)
         {
-            //read channel is channel 2
-            error = mkfifo( "/tmp/deca_channel_2", 0777 );
-            read_channel = 2;
-
-            if ( error == -1 )
-            {
-                printf("FIFO creation failed.\n");
-                return 1;
-            }
-
-            network.write_fifo = open("/tmp/deca_channel_1", O_WRONLY);
-            send_init_request(&network);
-            network.wait_for_init = 1;
-            network.read_fifo = open("/tmp/deca_channel_2", O_RDONLY | O_NONBLOCK);
-        }
-
-        else
-        {
-            printf("FIFO creation failed.\n");
+            printf("Failed to bind socket.\n");
             return 1;
         }
+
+        struct sockaddr_un other_address;
+        other_address.sun_family = AF_UNIX;
+        other_address.sun_path = "/tmp/deca_socket_2";
+        connect(network.own_socket, other_address, sizeof(other_address));
+
     }
 
     else
     {
-        read_channel = 1;
-        network.read_fifo = open("/tmp/deca_channel_1", O_RDONLY | O_NONBLOCK);
+        struct sockaddr_un own_address;
+        own_address.sun_family = AF_UNIX;
+        own_address.sun_path = "/tmp/deca_socket_2";
+        error = bind(network.own_socket, &own_address, sizeof(own_address));
+        if (error == -1)
+        {
+            printf("Failed to bind socket.\n");
+            return 1;
+        }
+
+        struct sockaddr_un other_address;
+        other_address.sun_family = AF_UNIX;
+        other_address.sun_path = "/tmp/deca_socket_1";
+        connect(network.own_socket, other_address, sizeof(other_address));
+
+        send_init_request(&network);
+        network.wait_for_init = 1;
     }
     
     //Freetype setup
@@ -1795,12 +1809,12 @@ int main (void)
         //check FIFO
         {
             char *base85_length = malloc(5);
-            if (read(network.read_fifo, base85_length, 5) == 5)
+            if (recv(network.own_socket, base85_length, 5, MSG_PEEK) == 5)
             {
                 Uint32 length = base85_dec_uint32(base85_length);
 
                 char *input = malloc(length);
-                ssize_t actual_length = read(network.read_fifo, input, length);
+                ssize_t actual_length = recv(network.own_socket, input, length, 0);
                 if (actual_length != length)
                 {
                     printf("Given message length and actual message length did not match. Message is not processed.\n");
@@ -1843,10 +1857,6 @@ int main (void)
 
                     else if (string_compare(input, length, "inrq", 4))
                     {
-                        if (network.write_fifo == -1)
-                        {
-                            network.write_fifo = open("/tmp/deca_channel_2", O_WRONLY);
-                        }
                         send_init(&network);
                     }
 
@@ -1946,15 +1956,7 @@ int main (void)
 
     FT_Done_FreeType(ft_library);
 
-    if ( read_channel == 1)
-    {
-        remove( "/tmp/deca_channel_1" );
-    }
-
-    else
-    {
-        remove( "/tmp/deca_channel_2" );
-    }
+    close(network.own_socket);
 
     return 0;
 }
