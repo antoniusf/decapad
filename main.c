@@ -52,6 +52,7 @@ typedef struct network_data
     int write_fifo;
     int wait_for_init;
     DynamicArray_uint32 send_queue;
+    int send_now;
 } network_data;
 
 int
@@ -1140,7 +1141,8 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_da
         active_insert->content[active_insert->length] = letter;
         active_insert->length++;
 
-        send_insert(active_insert, network);
+        enqueue_insert(active_insert, network);
+        network->send_now = 1;
 
         buffer->update_hint_cursor_ID = buffer->activeInsertID;
         buffer->update_hint_cursor_charPos = active_insert->length - 1;
@@ -1216,7 +1218,8 @@ insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_da
         TextInsert *new_insert_pointer = set->array + set->length-1; //NOTE: not thread safe!
         buffer->activeInsertID = new_insert.selfID;
         
-        send_insert(new_insert_pointer, network);
+        enqueue_insert(new_insert_pointer, network);
+        network->send_now = 1;
 
         buffer->update_hint_cursor_ID = new_insert.selfID;
         buffer->update_hint_cursor_charPos = 0;
@@ -1239,7 +1242,8 @@ delete_letter ( TextInsertSet *set, TextBuffer *buffer, network_data *network )
 
         insert->content[inner_pos] = 127;
 
-        send_insert(insert, network);
+        enqueue_insert(insert, network);
+        network->send_now = 1;
     }
     update_buffer(set, buffer);
     return 0;
@@ -1347,6 +1351,7 @@ int main (void)
 
     network_data network;
     network.wait_for_init = 0;
+    network.send_now = 0;
     initDynamicArray_uint32(&network.send_queue);
 
     int read_channel;
@@ -1893,9 +1898,10 @@ int main (void)
         }
 
         //resend un-ACKed inserts
-        if (resend_timer >= 500)
+        if (resend_timer >= 500 || network.send_now)
         {
             resend_timer = 0;
+            network.send_now = 0;
 
             if (network.send_queue.length > 0)
             {
