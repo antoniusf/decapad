@@ -1366,39 +1366,29 @@ int main (void)
     if (access("/tmp/deca_socket_1", F_OK) == -1)
     {
 
-        struct sockaddr_un own_address;
-        own_address.sun_family = AF_UNIX;
-        own_address.sun_path = "/tmp/deca_socket_1";
-        error = bind(network.own_socket, &own_address, sizeof(own_address));
+        const struct sockaddr_un own_address = { .sun_family = AF_UNIX, .sun_path = "/tmp/deca_socket_1" };
+        error = bind(network.own_socket, (const struct sockaddr *) &own_address, sizeof(own_address));
         if (error == -1)
         {
             printf("Failed to bind socket.\n");
             return 1;
         }
 
-        struct sockaddr_un other_address;
-        other_address.sun_family = AF_UNIX;
-        other_address.sun_path = "/tmp/deca_socket_2";
-        connect(network.own_socket, other_address, sizeof(other_address));
 
     }
 
     else
     {
-        struct sockaddr_un own_address;
-        own_address.sun_family = AF_UNIX;
-        own_address.sun_path = "/tmp/deca_socket_2";
-        error = bind(network.own_socket, &own_address, sizeof(own_address));
+        const struct sockaddr_un own_address = { .sun_family = AF_UNIX, .sun_path = "/tmp/deca_socket_2" };
+        error = bind(network.own_socket, (const struct sockaddr *) &own_address, sizeof(own_address));
         if (error == -1)
         {
             printf("Failed to bind socket.\n");
             return 1;
         }
 
-        struct sockaddr_un other_address;
-        other_address.sun_family = AF_UNIX;
-        other_address.sun_path = "/tmp/deca_socket_1";
-        connect(network.own_socket, other_address, sizeof(other_address));
+        const struct sockaddr_un other_address = { .sun_family = AF_UNIX, .sun_path = "/tmp/deca_socket_1" };
+        connect(network.own_socket, (const struct sockaddr *) &other_address, sizeof(other_address));
 
         send_init_request(&network);
         network.wait_for_init = 1;
@@ -1812,14 +1802,15 @@ int main (void)
             {
                 Uint32 length = base85_dec_uint32(base85_length);
 
-                char *input = malloc(length);
-                ssize_t actual_length = recv(network.own_socket, input, length, 0);
+                char *input_unsliced = malloc(length+5);
+                ssize_t actual_length = recv(network.own_socket, input_unsliced, length+5, 0)-5;
                 if (actual_length != length)
                 {
                     printf("Given message length and actual message length did not match. Message is not processed.\n");
                 }
                 else
                 {
+                    char *input = input_unsliced + 5;
 
                     printf("Received message of length %i: %.*s\n", length, length, input);
 
@@ -1856,6 +1847,8 @@ int main (void)
 
                     else if (string_compare(input, length, "inrq", 4))
                     {
+                        const struct sockaddr_un other_address = { .sun_family = AF_UNIX, .sun_path = "/tmp/deca_socket_2" };
+                        connect(network.own_socket, (const struct sockaddr *) &other_address, sizeof(other_address));
                         send_init(&network);
                     }
 
@@ -1895,7 +1888,7 @@ int main (void)
                     }
                 }
 
-                free(input);
+                free(input_unsliced);
             }
             free(base85_length);
 
