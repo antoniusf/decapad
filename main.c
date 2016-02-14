@@ -51,7 +51,6 @@ typedef struct TextBuffer TextBuffer;
 typedef struct network_data
 {
     int own_socket;
-    int other_socket;
     int wait_for_init;
     DynamicArray_uint32 send_queue;
     int send_now;
@@ -982,7 +981,7 @@ render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buf
             {
                 if (ID_stack->array[j] == insert.selfID)
                 {
-                    printf("render_text has detected a cyclic dependence between inserts. This should never happen, as it does not conform to the protocol specification.\n");
+                    printf("render_text has detected a cyclic dependency between inserts. This should never happen, as it does not conform to the protocol specification.\n");
                     valid = 0;
                 }
             }
