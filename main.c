@@ -42,9 +42,9 @@ struct TextBuffer
     int line;
     insertID activeInsertID;
     DynamicArray_uint32 text;
-    DynamicArray_ulong ID_table;
-    DynamicArray_ulong author_table;
-    DynamicArray_ulong charPos_table;
+    DynamicArray_uint32 ID_table;
+    DynamicArray_uint32 author_table;
+    DynamicArray_uint32 charPos_table;
 };
 typedef struct TextBuffer TextBuffer;
 
@@ -961,8 +961,10 @@ quicksort (unsigned long *array, unsigned long min, unsigned long max)
     }
 }
 
+extern void
+render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buffer, Uint32 cursor_ID, Uint8 cursor_charPos);
 
-void
+/*void
 render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buffer, Uint32 cursor_ID, Uint8 cursor_charPos, DynamicArray_uint32 *ID_stack)
 //buffer.text needs to be initialized; buffer.ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character, buffer.charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
 {
@@ -1037,7 +1039,7 @@ render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buf
     }
 
     free(IDs.array);
-}
+}*/
 
 void
 update_buffer (TextInsertSet *set, TextBuffer *buffer)
@@ -1078,7 +1080,8 @@ update_buffer (TextInsertSet *set, TextBuffer *buffer)
     DynamicArray_uint32 ID_stack;
     initDynamicArray_uint32(&ID_stack);
 
-    render_text(set, 0, 0, buffer, cursor_ID, cursor_charPos, &ID_stack);
+    render_text(set, 0, 0, buffer, cursor_ID, cursor_charPos);
+    //render_text(set, 0, 0, buffer, cursor_ID, cursor_charPos, &ID_stack);
 
     if (cursor_ID == 0)
     {
@@ -1462,9 +1465,9 @@ int main (void)
     buffer.line = 0;
 
     initDynamicArray_uint32(&buffer.text);
-    initDynamicArray_ulong(&buffer.ID_table);
-    initDynamicArray_ulong(&buffer.author_table);
-    initDynamicArray_ulong(&buffer.charPos_table);
+    initDynamicArray_uint32(&buffer.ID_table);
+    initDynamicArray_uint32(&buffer.author_table);
+    initDynamicArray_uint32(&buffer.charPos_table);
 
     program_state = STATE_LOGIN;
     add_string_to_utf32_text(&buffer.text, "username: \npassword: \npad with: ");

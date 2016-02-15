@@ -1,0 +1,10 @@
+[package]
+name = "rust_embed"
+version = "0.1.0"
+authors = ["Antonius Frie <antonius.frie@rub.de>"]
+
+[dependencies]
+libc = "0.2.7"
+
+[lib]
+crate-type = ["dylib"]
