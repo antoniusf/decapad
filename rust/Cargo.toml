@@ -5,6 +5,7 @@ authors = ["Antonius Frie <antonius.frie@rub.de>"]
 
 [dependencies]
 libc = "0.2.7"
+crc = "^1.0.0"
 
 [lib]
 crate-type = ["dylib"]
