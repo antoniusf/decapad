@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
-#![allow(unused_variables)]
+//#![allow(unused_variables)]
+#![allow(unused_imports)]
 
 use std::os::raw::{c_int, c_long, c_ulong};
 use std::vec::Vec;
@@ -72,7 +73,6 @@ impl TextInsert
 {
     fn is_ancestor_of_ID(&self, other_ID: u32, set: &TextInsertSet) -> bool
     {
-        let selfID = self.ID;
         match get_insert_by_ID(other_ID, &*set)
         {
             Some(&TextInsert { parent, ..}) if parent == self.ID => true,
@@ -314,42 +314,9 @@ pub struct ThreadPointerWrapper
 
 unsafe impl Send for ThreadPointerWrapper {}
 
-fn initialize_crc()
-{
-    let poly: u8 = 0x97;
-    let mut crc_table = [0u8; 256];
-
-    let mut i = 0u8;
-    while i <= 255
-    {
-        let mut indexbyte = i;
-        let mut j = 0u8;
-        while j <= 7
-        {
-            if (indexbyte >> 7) == 1
-            {
-                indexbyte <<= 1;
-                indexbyte ^= poly;
-            }
-            else
-            {
-                indexbyte <<= 1;
-            }
-
-            j += 1;
-        }
-        crc_table[i as usize] = indexbyte;
-
-        i += 1;
-    }
-}
-
-
-
 fn render_text(set: &TextInsertSet, text_buffer: &mut TextBufferInternal)
 {
     let mut ID_stack: Vec<u32> = Vec::new();
-    let mut cursor_new_pos = 0;
 
     text_buffer.text.clear();
     text_buffer.ID_table.clear();
@@ -473,8 +440,8 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
             }
         ;
 		
-		const buffer_length: usize = 10000;
-		let mut buffer = [0u8; buffer_length];
+		const BUFFER_LENGTH: usize = 10000;
+		let mut buffer = [0u8; BUFFER_LENGTH];
 
 		loop
 		{
@@ -546,7 +513,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                         }
                     }
                 },
-				Err(error) => ()
+				Err(_) => ()
 			}
 			
 			//check input queue
