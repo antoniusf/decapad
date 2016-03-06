@@ -56,6 +56,7 @@ fn serialize_u32 (number: u32, buffer: &mut Vec<u8>)
 }
 
 
+
 #[derive(Debug)]
 struct TextInsert
 {
@@ -64,7 +65,7 @@ struct TextInsert
     author: u32,
     charPos: u8,
     lock: u8,
-    content: String
+    content: Vec<char>
 }
 
 impl TextInsert
@@ -105,6 +106,126 @@ impl TextInsert
         }
     }
 
+    fn serialize (&self, buffer: &mut Vec<u8>)
+    {
+        let mut content_string = String::with_capacity(self.content.len()); //convert to UTF-8
+        for character in self.content.iter()
+        {
+            content_string.push(*character);
+        }
+
+        serialize_u32(self.ID, buffer);
+        serialize_u32(self.parent, buffer);
+        serialize_u32(self.author, buffer);
+        serialize_u32((self.charPos as u32)<<16 + (content_string.len() as u16), buffer);//NOTE: the u16 is necessary here because while character is one element of our content vector, it can be more than one byte in the utf-8 string (but not more than 255, which is why u16 should be sufficient).
+        buffer.extend_from_slice(content_string.as_bytes());
+    }
+
+    fn send(&self, network: NetworkState)
+    {
+        let mut buffer: Vec<u8> = Vec::with_capacity(16+self.content.len());
+        self.serialize(&mut buffer);
+        network.send(&buffer[..]);
+    }
+
+    fn deserialize (buffer: &[u8], set: &mut TextInsertSet, backend_state: &ProtocolBackendState) -> Option<usize>
+    {
+        if buffer.len() < 16
+        {
+            println!("TextInsert::deserialize says: given buffer is too short, cannot read header.");
+            return None;
+        }
+
+        let ID = deserialize_u32(&buffer[0..4]);
+        let parent = deserialize_u32(&buffer[4..8]);
+        let author = deserialize_u32(&buffer[8..12]);
+
+        let mix = deserialize_u32(&buffer[12..16]);
+        let charPos = (mix>>16) as u8;
+        let length = (mix as u16) as usize;
+
+        if buffer.len() < 16+length
+        {
+            println!("TextInsert::deserialize says: given buffer is too for the content it should contain.");
+            return None;
+        }
+
+        let mut raw_content: Vec<u8> = Vec::with_capacity(length);
+        raw_content.extend_from_slice(&buffer[16..16+length]);
+        match String::from_utf8(raw_content)
+        {
+            Ok(content_string) => 
+            {
+                let mut content: Vec<char> = Vec::with_capacity(255);
+                for character in content_string.chars()
+                {
+                    content.push(character);
+                }
+                content.shrink_to_fit(); //TODO: is this good or no good?
+
+                match get_insert_by_ID_index(ID, &*set)
+                {
+                    Some(index) =>
+                    {
+                        let mut old_insert = &mut set[index];
+
+                        if content.len() >= old_insert.content.len() //TODO: assume this is an update for now, actually we would need authenticity checking (and copying over 127s?)
+                        {
+                            old_insert.ID = ID;
+                            old_insert.parent = parent;
+                            old_insert.author = author;
+                            old_insert.charPos = charPos;
+                            old_insert.content = content;
+                        }
+                        else
+                        {
+                            for (old_character, new_character) in old_insert.content.iter_mut().zip(content.iter())
+                            {
+                                if *new_character == 127 as char
+                                {
+                                    *old_character = 127 as char
+                                }
+                            }
+                        }
+                    },
+
+                    None =>
+                    {
+                        if (ID >= backend_state.start_ID) & (ID <= backend_state.end_ID)
+                        {
+                            println!("Insert unserialization failed due to invalid insert ID: The insert would be newly created, but its ID lies within our ID range.");
+                            return None;
+                        }
+                        else
+                        {
+                            set.push(
+                                TextInsert
+                                {
+                                    ID: ID,
+                                    parent: parent,
+                                    author: author,
+                                    charPos: charPos,
+                                    content: content,
+                                    lock: 0 //TODO: remove lock?
+                                }
+                            );
+                        }
+
+                    }
+                }
+
+            },
+
+            Err(_) =>
+            {
+                println!("TextInsert::deserialize got invalid UTF-8.");
+                return None;
+            }
+        }
+        return Some(16 + length);
+    }
+
+
 }
 
 
@@ -114,7 +235,7 @@ type TextInsertSet = Vec<TextInsert>;
 #[derive(Debug)]
 struct TextBufferInternal
 {
-    text: String,
+    text: Vec<char>,
     ID_table: Vec<u32>,
     author_table: Vec<u32>,
     charPos_table: Vec<u8>,
@@ -263,12 +384,12 @@ fn render_text_internal(set: &TextInsertSet, parentID: u32, charPos: u8, text_bu
     {
         ID_stack.push(insert.ID);
 
-        for (position, character) in insert.content.chars().enumerate()
+        for (position, character) in insert.content.iter().enumerate()
         {
             render_text_internal(set, insert.ID, position as u8, &mut *text_buffer, ID_stack);
-            if character != 127 as char
+            if *character != 127 as char
             {
-                text_buffer.text.push(character);
+                text_buffer.text.push(*character);
                 text_buffer.ID_table.push(insert.ID);
                 text_buffer.author_table.push(insert.author);
                 text_buffer.charPos_table.push(position as u8);
@@ -328,7 +449,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
         let mut text_buffer =
             TextBufferInternal
             {
-                text: String::new(),
+                text: Vec::new(),
                 ID_table: Vec::new(),
                 author_table: Vec::new(),
                 charPos_table: Vec::new(),
@@ -402,6 +523,14 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
 
                         else if compare_slices("data".as_bytes(), &buffer[0..4])
                         {
+                            match backend_state
+                            {
+                                Some(ref backend_state_unpacked) =>
+                                {
+                                    TextInsert::deserialize(&buffer[4..bytes], &mut set, &backend_state_unpacked);
+                                },
+                                None => println!("Received data without being initialized first.")
+                            }
                         }
 
                         else if compare_slices("ack ".as_bytes(), &buffer[0..4])
@@ -448,7 +577,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
 					}
 
                     render_text(&set, &mut text_buffer);
-                    println!("Newly rendered text: {}", &text_buffer.text);
+                    println!("Newly rendered text: {:?}", &text_buffer.text);
                     println!("Data: {:?}", &set);
 
                     unsafe
@@ -495,6 +624,19 @@ fn get_insert_by_ID_mut (ID: u32, set: &mut TextInsertSet) -> Option<&mut TextIn
 
     return None;
 }
+
+fn get_insert_by_ID_index (ID: u32, set: &TextInsertSet) -> Option<usize>
+{
+    for (index, insert) in set.iter().enumerate()
+    {
+        if insert.ID == ID
+        {
+            return Some(index);
+        }
+    }
+    return None;
+}
+        
 
 fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut NetworkState, text_buffer: &mut TextBufferInternal, state: &mut ProtocolBackendState)
 {
@@ -574,7 +716,7 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
                 author: state.start_ID,
                 charPos: parent_charPos,
                 lock: 0,
-                content: character.to_string()
+                content: vec![character]
             };
         
 
