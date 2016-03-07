@@ -9,11 +9,12 @@ use std::thread;
 use std::net;
 use std::collections::vec_deque::VecDeque;
 use std::rc::Rc;
-use std::cell::{RefCell, Ref, RefMut};
+use std::cell::{Cell, RefCell, Ref, RefMut};
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
+use std::time::Duration;
 extern crate libc;
 extern crate crc;
 use crc::crc32::checksum_ieee;
@@ -314,6 +315,84 @@ pub struct ThreadPointerWrapper
 
 unsafe impl Send for ThreadPointerWrapper {}
 
+struct Spsc_255
+{
+    buffer: [Cell<u8>; 256],
+    pop_index: AtomicUsize,
+    push_index: AtomicUsize,
+}
+
+pub struct Consumer
+{
+    queue: Arc<Spsc_255>
+}
+
+pub struct Producer
+{
+    queue: Arc<Spsc_255>
+}
+
+impl Spsc_255
+{
+    fn new() -> (Producer, Consumer)
+    {
+        let queue = Arc::new(
+            Spsc_255
+            {
+                buffer: [Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8)], //sigh.
+                pop_index: AtomicUsize::new(0),
+                push_index: AtomicUsize::new(0)
+            }
+        );
+
+        return (Producer {queue: queue.clone()}, Consumer{queue: queue.clone()});
+    }
+}
+
+impl Producer
+{
+    fn push (&self, item: u8) -> bool
+    {
+        let push_index = self.queue.push_index.load(Ordering::Relaxed);
+        if push_index as u8 != (self.queue.pop_index.load(Ordering::Acquire) as u8) - 1
+        {
+            self.queue.buffer[push_index].set(item);
+            self.queue.push_index.store(((push_index as u8) + 1) as usize, Ordering::Release);
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+}
+
+impl Consumer
+{
+    fn pop (&self) -> Option<u8>
+    {
+        let pop_index = self.queue.push_index.load(Ordering::Relaxed);
+        if pop_index as u8 == self.queue.push_index.load(Ordering::Acquire) as u8
+        {
+            let value = self.queue.buffer[pop_index].get();
+            self.queue.pop_index.store(((pop_index as u8) +1) as usize, Ordering::Release);
+            return Some(value);
+        }
+        else
+        {
+            return None;
+        }
+    }
+
+    /// Returns a minimum bound of the current length of the queue. In most cases, the value is probably exact, but (due to threading) it is also possible that the queue is longer that.
+    fn len (&self) -> u8
+    {
+        return (self.queue.push_index.load(Ordering::Relaxed) as u8) - (self.queue.pop_index.load(Ordering::Relaxed) as u8)
+    }
+}
+
+unsafe impl Send for Consumer {} //TODO: formal proof?
+
 fn render_text(set: &TextInsertSet, text_buffer: &mut TextBufferInternal)
 {
     let mut ID_stack: Vec<u32> = Vec::new();
@@ -395,15 +474,15 @@ unsafe fn expandDynamicArray_uint32 (array: &mut DynamicArray_uint32, new_length
 }
 
 #[no_mangle]
-pub unsafe extern fn start_backend (own_port: u16, other_port: u16, sync_bit: *mut u8, textbuffer_ptr: *mut TextBuffer) -> *mut mpsc::Sender<u8>
+pub unsafe extern fn start_backend (own_port: u16, other_port: u16, sync_bit: *mut u8, textbuffer_ptr: *mut TextBuffer) -> *mut Producer
 {
     start_backend_safe(own_port, other_port, sync_bit, textbuffer_ptr)
 }
 
-fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text_buffer_ptr: *mut TextBuffer) -> *mut mpsc::Sender<u8>
+fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text_buffer_ptr: *mut TextBuffer) -> *mut Producer
 {
 	
-	let (input_sender, input_receiver): (mpsc::Sender<u8>, mpsc::Receiver<u8>) = mpsc::channel();
+	let (input_sender, input_receiver): (Producer, Consumer) = Spsc_255::new();
 	let input_sender_box = Box::new(input_sender);
 
     let c_pointers = ThreadPointerWrapper { text_buffer: c_text_buffer_ptr, sync_bit: sync_bit };
@@ -519,7 +598,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
 			//check input queue
 			{
 				let mut new_text_raw: Vec<u8> = Vec::new();
-				while let Ok(byte) = input_receiver.try_recv()
+				while let Some(byte) = input_receiver.pop()
 				{
 					new_text_raw.push(byte);
 				}
@@ -635,7 +714,7 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
         make_new_insert = true;
     }
 
-    if make_new_insert == true
+    if make_new_insert
     {
         let position = text_buffer.cursor_globalPos;
 
@@ -704,7 +783,7 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
 
 
 #[no_mangle]
-pub unsafe extern fn rust_text_input (text: *const u8, sender_box_ptr: *mut mpsc::Sender<u8>) -> *mut mpsc::Sender<u8>
+pub unsafe extern fn rust_text_input (text: *const u8, sender_box_ptr: *mut Producer) -> *mut Producer
 {
 	let mut sender_box = Box::from_raw(sender_box_ptr);
 	{
@@ -718,11 +797,10 @@ pub unsafe extern fn rust_text_input (text: *const u8, sender_box_ptr: *mut mpsc
 			}
 			else
 			{
-				match sender.send(*text.offset(i))
-				{
-					Err(error) => println!("Failed to send keypress to the rust thread: {}", error),
-					_ => ()
-				}
+				if sender.push(*text.offset(i)) == false
+                {
+                    println!("rust_text_input says: keypress buffer has run full");
+                }
 			}
             i += 1;
 		}
