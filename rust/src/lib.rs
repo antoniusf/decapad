@@ -5,6 +5,7 @@
 
 use std::os::raw::{c_int, c_long, c_ulong};
 use std::vec::Vec;
+use std::{str, char};
 use std::thread;
 use std::net;
 use std::collections::vec_deque::VecDeque;
@@ -57,6 +58,12 @@ fn serialize_u32 (number: u32, buffer: &mut Vec<u8>)
     buffer.push(number as u8);
 }
 
+
+enum KeyEvent
+{
+    Character(char),
+    Other(u8)
+}
 
 
 #[derive(Debug)]
@@ -385,6 +392,7 @@ impl Consumer
     }
 
     /// Returns a minimum bound of the current length of the queue. In most cases, the value is probably exact, but (due to threading) it is also possible that the queue is longer that.
+    /// If do need an exact value, you should probably make sure that the other thread does not push in between and use an atomic fence to ensure you are seeing the most updated push_index.
     fn len (&self) -> u8
     {
         return (self.queue.push_index.load(Ordering::Relaxed) as u8) - (self.queue.pop_index.load(Ordering::Relaxed) as u8)
@@ -602,40 +610,79 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
 				{
 					new_text_raw.push(byte);
 				}
-				let mut new_text = String::from_utf8(new_text_raw).expect("Got invalid UTF-8 from SDL!");
-				if new_text.len() > 0
-				{
-                    println!("Received text!: {}", new_text);
-					for character in new_text.drain(..)
-					{
-                        if character == 127 as char
+
+                match backend_state
+                {
+                    Some(ref mut inner_backend_state) =>
+                    {
+                        let mut read_index = 0;
+                        let mut new_text: Vec<KeyEvent> = Vec::new();
+                        while read_index < new_text_raw.len()
                         {
-                            //delete_letter
-                        }
-                        else
-                        {
-                            match backend_state
+                            let possible_next_control_byte = new_text_raw[read_index..].iter().position(|&x| x==255u8); //NOTE: we are using 255 as a control byte so we can send non-character-keypresses over the same queue. 255 is invalid utf-8, so we can use it without limiting its utility as a utf-8 character queue. The 255 control byte is followed by a second byte not to be interpreted as utf-8, which designates what other key has been pressed. After that, normal utf-8 starts again.
+
+                            match possible_next_control_byte
                             {
-                                Some(ref mut inner_state) => insert_character(&mut set, character, &mut network, &mut text_buffer, inner_state),
-                                None => println!("Tried to insert a character while being uninitialized. The character will not be inserted.")
+                                Some(next_control_byte) =>
+                                {
+                                    match str::from_utf8(&new_text_raw[read_index..next_control_byte])
+                                    {
+                                        Ok(string_slice) => new_text.extend(string_slice.chars().map(|character| KeyEvent::Character(character))),
+                                        Err(_) => panic!("Got invalid UTF-8 from SDL!")
+                                    }
+
+                                    new_text.push(KeyEvent::Other(new_text_raw[next_control_byte+1]));
+                                    read_index = next_control_byte +2;
+                                }
+
+                                None =>
+                                {
+                                    match str::from_utf8(&new_text_raw[read_index..])
+                                    {
+                                        Ok(string_slice) => new_text.extend(string_slice.chars().map(|character| KeyEvent::Character(character))),
+                                        Err(_) => panic!("Got invalid UTF-8 from SDL!")
+                                    }
+                                    read_index = new_text_raw.len();
+                                }
                             }
                         }
-					}
 
-                    render_text(&set, &mut text_buffer);
-                    println!("Newly rendered text: {:?}", &text_buffer.text);
-                    println!("Data: {:?}", &set);
-
-                    unsafe
-                    {
-                        *c_pointers.sync_bit = 1;
-                        while *c_pointers.sync_bit == 1
+                        if new_text.len() > 0
                         {
+                            println!("Received text!");
+                            for event in new_text.drain(..)
+                            {
+                                match event
+                                {
+                                    KeyEvent::Character(character) => insert_character(&mut set, character, &mut network, &mut text_buffer, inner_backend_state),
+                                    KeyEvent::Other(other_event) =>
+                                    {
+                                        if other_event == 127
+                                        {
+                                            //delete_letter
+                                        }
+                                        //...
+                                    }
+                                }
+                            }
+
+                            render_text(&set, &mut text_buffer);
+                            println!("Newly rendered text: {:?}", &text_buffer.text);
+                            println!("Data: {:?}", &set);
+
+                            unsafe
+                            {
+                                *c_pointers.sync_bit = 1;
+                                while *c_pointers.sync_bit == 1
+                                {
+                                }
+                            }
+                            
+                            //copy
                         }
-                    }
-					
-					//copy
-					
+                    },
+
+                    None => println!("Got some keypresses, but weren't initialized.")
 					
 				}
 			}
