@@ -360,11 +360,11 @@ impl Producer
 {
     fn push (&self, item: u8) -> bool
     {
-        let push_index = self.queue.push_index.load(Ordering::Relaxed);
-        if push_index as u8 != (self.queue.pop_index.load(Ordering::Acquire) as u8) - 1
+        let push_index: u8 = self.queue.push_index.load(Ordering::Relaxed) as u8;
+        if push_index.wrapping_add(1) != self.queue.pop_index.load(Ordering::Acquire) as u8
         {
-            self.queue.buffer[push_index].set(item);
-            self.queue.push_index.store(((push_index as u8) + 1) as usize, Ordering::Release);
+            self.queue.buffer[push_index as usize].set(item);
+            self.queue.push_index.store(push_index.wrapping_add(1) as usize, Ordering::Release);
             return true;
         }
         else
@@ -378,11 +378,11 @@ impl Consumer
 {
     fn pop (&self) -> Option<u8>
     {
-        let pop_index = self.queue.push_index.load(Ordering::Relaxed);
-        if pop_index as u8 == self.queue.push_index.load(Ordering::Acquire) as u8
+        let pop_index: u8 = self.queue.pop_index.load(Ordering::Relaxed) as u8;
+        if pop_index != self.queue.push_index.load(Ordering::Acquire) as u8
         {
-            let value = self.queue.buffer[pop_index].get();
-            self.queue.pop_index.store(((pop_index as u8) +1) as usize, Ordering::Release);
+            let value = self.queue.buffer[pop_index as usize].get();
+            self.queue.pop_index.store(pop_index.wrapping_add(1) as usize, Ordering::Release);
             return Some(value);
         }
         else
@@ -611,44 +611,44 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
 					new_text_raw.push(byte);
 				}
 
-                match backend_state
+                if new_text_raw.len() > 0
                 {
-                    Some(ref mut inner_backend_state) =>
+                    match backend_state
                     {
-                        let mut read_index = 0;
-                        let mut new_text: Vec<KeyEvent> = Vec::new();
-                        while read_index < new_text_raw.len()
+                        Some(ref mut inner_backend_state) =>
                         {
-                            let possible_next_control_byte = new_text_raw[read_index..].iter().position(|&x| x==255u8); //NOTE: we are using 255 as a control byte so we can send non-character-keypresses over the same queue. 255 is invalid utf-8, so we can use it without limiting its utility as a utf-8 character queue. The 255 control byte is followed by a second byte not to be interpreted as utf-8, which designates what other key has been pressed. After that, normal utf-8 starts again.
-
-                            match possible_next_control_byte
+                            let mut read_index = 0;
+                            let mut new_text: Vec<KeyEvent> = Vec::new();
+                            while read_index < new_text_raw.len()
                             {
-                                Some(next_control_byte) =>
+                                let possible_next_control_byte = new_text_raw[read_index..].iter().position(|&x| x==255u8); //NOTE: we are using 255 as a control byte so we can send non-character-keypresses over the same queue. 255 is invalid utf-8, so we can use it without limiting its utility as a utf-8 character queue. The 255 control byte is followed by a second byte not to be interpreted as utf-8, which designates what other key has been pressed. After that, normal utf-8 starts again.
+
+                                match possible_next_control_byte
                                 {
-                                    match str::from_utf8(&new_text_raw[read_index..next_control_byte])
+                                    Some(next_control_byte) =>
                                     {
-                                        Ok(string_slice) => new_text.extend(string_slice.chars().map(|character| KeyEvent::Character(character))),
-                                        Err(_) => panic!("Got invalid UTF-8 from SDL!")
+                                        match str::from_utf8(&new_text_raw[read_index..next_control_byte])
+                                        {
+                                            Ok(string_slice) => new_text.extend(string_slice.chars().map(|character| KeyEvent::Character(character))),
+                                            Err(_) => panic!("Got invalid UTF-8 from SDL!")
+                                        }
+
+                                        new_text.push(KeyEvent::Other(new_text_raw[next_control_byte+1]));
+                                        read_index = next_control_byte +2;
                                     }
 
-                                    new_text.push(KeyEvent::Other(new_text_raw[next_control_byte+1]));
-                                    read_index = next_control_byte +2;
-                                }
-
-                                None =>
-                                {
-                                    match str::from_utf8(&new_text_raw[read_index..])
+                                    None =>
                                     {
-                                        Ok(string_slice) => new_text.extend(string_slice.chars().map(|character| KeyEvent::Character(character))),
-                                        Err(_) => panic!("Got invalid UTF-8 from SDL!")
+                                        match str::from_utf8(&new_text_raw[read_index..])
+                                        {
+                                            Ok(string_slice) => new_text.extend(string_slice.chars().map(|character| KeyEvent::Character(character))),
+                                            Err(_) => panic!("Got invalid UTF-8 from SDL!")
+                                        }
+                                        read_index = new_text_raw.len();
                                     }
-                                    read_index = new_text_raw.len();
                                 }
                             }
-                        }
 
-                        if new_text.len() > 0
-                        {
                             println!("Received text!");
                             for event in new_text.drain(..)
                             {
@@ -679,12 +679,11 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                             }
                             
                             //copy
-                        }
-                    },
+                        },
 
-                    None => println!("Got some keypresses, but weren't initialized.")
-					
-				}
+                        None => println!("Got some keypresses, but weren't initialized.")
+                    }
+                }
 			}
 		}
 	});
