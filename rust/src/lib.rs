@@ -301,6 +301,7 @@ pub struct DynamicArray_uint32
 pub struct TextBuffer
 {
     cursor: c_int,
+    ahead_cursor: c_int,
     update_hint_cursor_ID: i64,
     update_hint_cursor_charPos: i16,
     x: c_int,
@@ -401,6 +402,9 @@ impl Consumer
 
 unsafe impl Send for Consumer {} //TODO: formal proof?
 
+pub type FFIData = *mut (Producer, thread::JoinHandle<()>);
+
+
 fn render_text(set: &TextInsertSet, text_buffer: &mut TextBufferInternal)
 {
     let mut ID_stack: Vec<u32> = Vec::new();
@@ -482,20 +486,19 @@ unsafe fn expandDynamicArray_uint32 (array: &mut DynamicArray_uint32, new_length
 }
 
 #[no_mangle]
-pub unsafe extern fn start_backend (own_port: u16, other_port: u16, sync_bit: *mut u8, textbuffer_ptr: *mut TextBuffer) -> *mut Producer
+pub unsafe extern fn start_backend (own_port: u16, other_port: u16, sync_bit: *mut u8, textbuffer_ptr: *mut TextBuffer) -> *mut (Producer, thread::JoinHandle<()>)
 {
     start_backend_safe(own_port, other_port, sync_bit, textbuffer_ptr)
 }
 
-fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text_buffer_ptr: *mut TextBuffer) -> *mut Producer
+fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text_buffer_ptr: *mut TextBuffer) -> *mut (Producer, thread::JoinHandle<()>)
 {
 	
 	let (input_sender, input_receiver): (Producer, Consumer) = Spsc_255::new();
-	let input_sender_box = Box::new(input_sender);
 
     let c_pointers = ThreadPointerWrapper { text_buffer: c_text_buffer_ptr, sync_bit: sync_bit };
 	
-	thread::spawn(move ||
+	let handle = thread::spawn(move ||
 	{
         //set up data structures
         let mut set: TextInsertSet = Vec::new();
@@ -617,68 +620,53 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                     {
                         Some(ref mut inner_backend_state) =>
                         {
-                            let mut read_index = 0;
-                            let mut new_text: Vec<KeyEvent> = Vec::new();
-                            while read_index < new_text_raw.len()
-                            {
-                                let possible_next_control_byte = new_text_raw[read_index..].iter().position(|&x| x==255u8); //NOTE: we are using 255 as a control byte so we can send non-character-keypresses over the same queue. 255 is invalid utf-8, so we can use it without limiting its utility as a utf-8 character queue. The 255 control byte is followed by a second byte not to be interpreted as utf-8, which designates what other key has been pressed. After that, normal utf-8 starts again.
-
-                                match possible_next_control_byte
-                                {
-                                    Some(next_control_byte) =>
-                                    {
-                                        match str::from_utf8(&new_text_raw[read_index..next_control_byte])
-                                        {
-                                            Ok(string_slice) => new_text.extend(string_slice.chars().map(|character| KeyEvent::Character(character))),
-                                            Err(_) => panic!("Got invalid UTF-8 from SDL!")
-                                        }
-
-                                        new_text.push(KeyEvent::Other(new_text_raw[next_control_byte+1]));
-                                        read_index = next_control_byte +2;
-                                    }
-
-                                    None =>
-                                    {
-                                        match str::from_utf8(&new_text_raw[read_index..])
-                                        {
-                                            Ok(string_slice) => new_text.extend(string_slice.chars().map(|character| KeyEvent::Character(character))),
-                                            Err(_) => panic!("Got invalid UTF-8 from SDL!")
-                                        }
-                                        read_index = new_text_raw.len();
-                                    }
-                                }
-                            }
+                            let new_text = str::from_utf8(&new_text_raw[..]).expect("Got invalid UTF-8 from SDL!");
 
                             println!("Received text!");
-                            for event in new_text.drain(..)
+                            for character in new_text.chars()
                             {
-                                match event
+                                if character == 127 as char
                                 {
-                                    KeyEvent::Character(character) => insert_character(&mut set, character, &mut network, &mut text_buffer, inner_backend_state),
-                                    KeyEvent::Other(other_event) =>
-                                    {
-                                        if other_event == 127
-                                        {
-                                            //delete_letter
-                                        }
-                                        //...
-                                    }
+                                    //delete_letter
+                                }
+                                else
+                                {
+                                    insert_character(&mut set, character, &mut network, &mut text_buffer, inner_backend_state);
                                 }
                             }
 
-                            render_text(&set, &mut text_buffer);
+                            render_text(&set, &mut text_buffer);//TODO: initialize with correct cursor position
                             println!("Newly rendered text: {:?}", &text_buffer.text);
                             println!("Data: {:?}", &set);
 
                             unsafe
                             {
                                 *c_pointers.sync_bit = 1;
-                                while *c_pointers.sync_bit == 1
-                                {
-                                }
                             }
+                            thread::park();
                             
                             //copy
+                            unsafe
+                            {
+                                if input_receiver.len() > 0
+                                {
+                                    //abort: process the new keypresses first, then try syncing again.
+                                }
+                                else
+                                {
+                                    let mut c_text_buffer = &mut *c_pointers.text_buffer;
+                                    c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
+                                    c_text_buffer.ahead_cursor = c_text_buffer.cursor;
+                                    expandDynamicArray_uint32(&mut c_text_buffer.text, text_buffer.text.len());
+                                    for (offset, character) in text_buffer.text.iter().enumerate()
+                                    {
+                                        *c_text_buffer.text.array.offset(offset as isize) = *character as u32;
+                                    }
+                                }
+                                *c_pointers.sync_bit = 2;
+                            }
+
+
                         },
 
                         None => println!("Got some keypresses, but weren't initialized.")
@@ -688,7 +676,8 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
 		}
 	});
 	
-	return Box::into_raw(input_sender_box);
+	let return_box = Box::new((input_sender, handle));
+	return Box::into_raw(return_box);
 }
 
 fn get_insert_by_ID (ID: u32, set: &TextInsertSet) -> Option<&TextInsert>
@@ -829,11 +818,11 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
 
 
 #[no_mangle]
-pub unsafe extern fn rust_text_input (text: *const u8, sender_box_ptr: *mut Producer) -> *mut Producer
+pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: FFIData) -> FFIData
 {
-	let mut sender_box = Box::from_raw(sender_box_ptr);
+	let mut c_box = Box::from_raw(box_ptr);
 	{
-		let sender = &*sender_box;
+		let (ref sender, _) = *c_box;
 		let mut i = 0;
 		loop
 		{
@@ -846,11 +835,24 @@ pub unsafe extern fn rust_text_input (text: *const u8, sender_box_ptr: *mut Prod
 				if sender.push(*text.offset(i)) == false
                 {
                     println!("rust_text_input says: keypress buffer has run full");
-                }
+                } //TODO: perhaps make a blocking push here? Though it is extremely unlikely that the buffer will ever run full...
 			}
             i += 1;
 		}
 	}
-	let new_box_pointer = Box::into_raw(sender_box);
+	let new_box_pointer = Box::into_raw(c_box);
 	return new_box_pointer;
+}
+
+#[no_mangle]
+pub unsafe extern fn rust_sync_text (ffi_data: FFIData) -> FFIData
+{
+    let mut ffi_box = Box::from_raw(ffi_data);
+    {
+        let (_, ref other_thread) = *ffi_box;
+
+        other_thread.thread().unpark();
+    }
+    //TODO: for now, c will have to busy wait on the sync bit. change this to a condvar? or parking?
+    return Box::into_raw(ffi_box);
 }

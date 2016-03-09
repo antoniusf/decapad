@@ -34,6 +34,7 @@ enum PROGRAM_STATES
 struct TextBuffer
 {
     int cursor;
+    int ahead_cursor;
     Sint64 update_hint_cursor_ID; //TODO: Maybe migrate to a c++ compiler so we can have default arguments instead of this
     Sint16 update_hint_cursor_charPos;
     int x;
@@ -962,10 +963,13 @@ quicksort (unsigned long *array, unsigned long min, unsigned long max)
 }
 
 extern void *
-start_backend (Uint16 own_port, Uint16 other_port, Uint8 *sync_bit, DynamicArray_uint32 *textbuffer_ptr);
+start_backend (Uint16 own_port, Uint16 other_port, Uint8 *sync_bit, TextBuffer *textbuffer_ptr);
 
 extern void *
-rust_text_input (const Uint8 *text, void *sender_box_ptr);
+rust_text_input (const Uint8 *text, void *ffi_box_ptr);
+
+extern void *
+rust_sync_text (void *ffi_box_ptr);
 
 void
 render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buffer, Uint32 cursor_ID, Uint8 cursor_charPos, DynamicArray_uint32 *ID_stack)
@@ -1459,6 +1463,7 @@ int main (void)
 
     TextBuffer buffer;
     buffer.cursor = 0;
+    buffer.ahead_cursor = 0;
     buffer.update_hint_cursor_ID = -1;
     buffer.update_hint_cursor_charPos = -1;
     buffer.activeInsertID = 0;
@@ -1482,7 +1487,7 @@ int main (void)
 
     //Start rust backend
     Uint8 sync_bit = 0;
-    void *sender_box_ptr = start_backend(2001, 2002, &sync_bit, &buffer.text);
+    void *ffi_box_ptr = start_backend(2001, 2002, &sync_bit, &buffer);
 
 
     //main loop
@@ -1520,7 +1525,7 @@ int main (void)
                             insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
                         }
                         blink_timer = 0;
-                        rust_text_input(e.text.text, sender_box_ptr);
+                        rust_text_input(e.text.text, ffi_box_ptr);
                     }
                     else if (program_state == STATE_LOGIN)
                     {
@@ -1944,6 +1949,8 @@ int main (void)
         if (sync_bit == 1)
         {
             printf("Sync!\n");
+            ffi_box_ptr = rust_sync_text(ffi_box_ptr);
+            while (sync_bit == 1);
             sync_bit = 0;
         }
 
@@ -1957,7 +1964,7 @@ int main (void)
 
     //kill the rust thread
     Uint8 quit_signal[5] = {255, 255, 255, 255, 0};
-    rust_text_input(&quit_signal[0], sender_box_ptr);
+    rust_text_input(&quit_signal[0], ffi_box_ptr);
 
     free(buffer.text.array);
     free(buffer.ID_table.array);
