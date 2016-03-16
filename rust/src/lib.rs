@@ -12,7 +12,7 @@ use std::collections::vec_deque::VecDeque;
 use std::rc::Rc;
 use std::cell::{Cell, RefCell, Ref, RefMut};
 use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -20,24 +20,6 @@ extern crate libc;
 extern crate crc;
 use crc::crc32::checksum_ieee;
 
-fn compare_slices (a: &[u8], b: &[u8]) -> bool
-{
-    if a.len() == b.len()
-    {
-        for i in 0..a.len()
-        {
-            if a[i] != b[i]
-            {
-                return false;
-            }
-        }
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-}
 
 fn deserialize_u32 (buffer: &[u8]) -> u32
 {
@@ -375,6 +357,8 @@ impl Producer
     }
 }
 
+unsafe impl Send for Producer {} //TODO: formal proof?
+
 impl Consumer
 {
     fn pop (&self) -> Option<u8>
@@ -401,6 +385,100 @@ impl Consumer
 }
 
 unsafe impl Send for Consumer {} //TODO: formal proof?
+
+#[derive(PartialEq)]
+enum TentState
+{
+    Empty,
+    Occupied,
+    Woken_Up
+}
+
+struct OneThreadTentInside
+{
+    condvar: Condvar,
+    state: Mutex<TentState>
+}
+
+///Two threads go camping, but only one thread can sleep in the tent at any time. This is so that both threads can't sleep at the same time with no one to wake them up.
+struct OneThreadTent
+{
+    arc: Arc<OneThreadTentInside>
+}
+
+impl OneThreadTent
+{
+    fn new() -> (OneThreadTent, OneThreadTent)
+    {
+        let arc = Arc::new(
+            OneThreadTentInside
+            {
+                condvar: Condvar::new(),
+                state: Mutex::new(TentState::Empty)
+            }
+        );
+        return (OneThreadTent {arc: arc.clone()}, OneThreadTent {arc: arc.clone()})
+    }
+
+    ///Tries to sleep in the tent. Does not go to sleep if the tent is occupied. Returns true if it has slept, and false if it doesn't.
+    fn sleep(&self) -> bool
+    {
+        let mut state = self.arc.state.lock().unwrap();
+        if *state == TentState::Empty
+        {
+            *state = TentState::Occupied;
+            while *state != TentState::Woken_Up
+            {
+                state = self.arc.condvar.wait(state).unwrap();
+            }
+            //get out of the tent
+            *state = TentState::Empty;
+
+            return true;
+        }
+        
+        else
+        {
+            println!("OneThreadTent.sleep says: Can't go to sleep, there's already someone in the tent!");
+            return false;
+        }
+    }
+
+    fn wake_up(&self) -> bool
+    {
+        let mut state = self.arc.state.lock().unwrap();
+        if *state == TentState::Occupied
+        {
+            *state = TentState::Woken_Up;
+            self.arc.condvar.notify_one();
+            return true;
+        }
+
+        else
+        {
+            println!("OneThreadTent.wake_up says: The tent is empty, there is no one to wake up!");
+            return false;
+        }
+    }
+}
+
+impl Drop for OneThreadTent
+{
+    fn drop(&mut self)
+    {
+        self.wake_up(); //Wake up any sleeping threads
+        let mut state = self.arc.state.lock().unwrap();
+        if *state == TentState::Empty
+        {
+            *state = TentState::Occupied; //go to sleep forever...
+        }
+        else
+        {
+            println!("Warning: a tent was dropped while it was occupied. This may result in the other thread sleeping indefinitely.");
+        }
+    }
+}
+
 
 pub type FFIData = *mut (Producer, thread::JoinHandle<()>);
 
@@ -543,7 +621,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                     if address.port() == other_port //TODO: check IP address
                     {
                         //length?
-                        if compare_slices("init".as_bytes(), &buffer[0..4])
+                        if "init".as_bytes() == &buffer[0..4]
                         {
                             if backend_state.is_none()
                             {
@@ -559,7 +637,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                             }
                         }
 
-                        else if compare_slices("inrq".as_bytes(), &buffer[0..4])
+                        else if "inrq".as_bytes() == &buffer[0..4]
                         {
                             //send init
                             match backend_state
@@ -578,7 +656,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                             }
                         }
 
-                        else if compare_slices("data".as_bytes(), &buffer[0..4])
+                        else if "data".as_bytes() == &buffer[0..4]
                         {
                             match backend_state
                             {
@@ -590,7 +668,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                             }
                         }
 
-                        else if compare_slices("ack ".as_bytes(), &buffer[0..4])
+                        else if "ack ".as_bytes() == &buffer[0..4]
                         {
                             if bytes == 4+4
                             {
@@ -620,6 +698,15 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                     {
                         Some(ref mut inner_backend_state) =>
                         {
+                            //update cursor
+                            unsafe
+                            {
+                                let c_text_buffer = &*c_pointers.text_buffer;
+                                text_buffer.cursor_globalPos = c_text_buffer.cursor as u32;
+                                text_buffer.cursor_charPos = Some(c_text_buffer.update_hint_cursor_charPos as u8);
+                                text_buffer.cursor_ID = Some(c_text_buffer.update_hint_cursor_ID as u32);
+                            }
+
                             let new_text = str::from_utf8(&new_text_raw[..]).expect("Got invalid UTF-8 from SDL!");
 
                             println!("Received text!");
@@ -634,6 +721,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                                     insert_character(&mut set, character, &mut network, &mut text_buffer, inner_backend_state);
                                 }
                             }
+
 
                             render_text(&set, &mut text_buffer);//TODO: initialize with correct cursor position
                             println!("Newly rendered text: {:?}", &text_buffer.text);
@@ -658,6 +746,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                                     c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
                                     c_text_buffer.ahead_cursor = c_text_buffer.cursor;
                                     expandDynamicArray_uint32(&mut c_text_buffer.text, text_buffer.text.len());
+                                    c_text_buffer.text.length = text_buffer.text.len() as c_long;
                                     for (offset, character) in text_buffer.text.iter().enumerate()
                                     {
                                         *c_text_buffer.text.array.offset(offset as isize) = *character as u32;
@@ -818,7 +907,7 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
 
 
 #[no_mangle]
-pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: FFIData) -> FFIData
+pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: FFIData)
 {
 	let mut c_box = Box::from_raw(box_ptr);
 	{
@@ -840,12 +929,11 @@ pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: FFIData) -> FFID
             i += 1;
 		}
 	}
-	let new_box_pointer = Box::into_raw(c_box);
-	return new_box_pointer;
+	mem::forget(c_box);
 }
 
 #[no_mangle]
-pub unsafe extern fn rust_sync_text (ffi_data: FFIData) -> FFIData
+pub unsafe extern fn rust_sync_text (ffi_data: FFIData)
 {
     let mut ffi_box = Box::from_raw(ffi_data);
     {
@@ -854,5 +942,5 @@ pub unsafe extern fn rust_sync_text (ffi_data: FFIData) -> FFIData
         other_thread.thread().unpark();
     }
     //TODO: for now, c will have to busy wait on the sync bit. change this to a condvar? or parking?
-    return Box::into_raw(ffi_box);
+    mem::forget(ffi_box);
 }

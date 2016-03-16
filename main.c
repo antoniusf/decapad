@@ -965,10 +965,10 @@ quicksort (unsigned long *array, unsigned long min, unsigned long max)
 extern void *
 start_backend (Uint16 own_port, Uint16 other_port, Uint8 *sync_bit, TextBuffer *textbuffer_ptr);
 
-extern void *
+void
 rust_text_input (const Uint8 *text, void *ffi_box_ptr);
 
-extern void *
+void
 rust_sync_text (void *ffi_box_ptr);
 
 void
@@ -1949,7 +1949,7 @@ int main (void)
         if (sync_bit == 1)
         {
             printf("Sync!\n");
-            ffi_box_ptr = rust_sync_text(ffi_box_ptr);
+            rust_sync_text(ffi_box_ptr);
             while (sync_bit == 1);
             sync_bit = 0;
         }
