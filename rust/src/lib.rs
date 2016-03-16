@@ -3,19 +3,21 @@
 //#![allow(unused_variables)]
 #![allow(unused_imports)]
 
+use std::{mem, net, str, char, thread};
+
 use std::os::raw::{c_int, c_long, c_ulong};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
 use std::vec::Vec;
-use std::{str, char};
-use std::thread;
-use std::net;
 use std::collections::vec_deque::VecDeque;
 use std::rc::Rc;
-use std::cell::{Cell, RefCell, Ref, RefMut};
-use std::ops::Deref;
 use std::sync::{Arc, Condvar, Mutex};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::cell::{Cell, RefCell, Ref, RefMut};
+
+use std::ops::Deref;
 use std::sync::mpsc;
 use std::time::Duration;
+
 extern crate libc;
 extern crate crc;
 use crc::crc32::checksum_ieee;
@@ -408,6 +410,7 @@ struct OneThreadTent
 
 impl OneThreadTent
 {
+    ///Makes a new tent and gives two references back to you, so two threads can sleep in it.
     fn new() -> (OneThreadTent, OneThreadTent)
     {
         let arc = Arc::new(
@@ -444,6 +447,7 @@ impl OneThreadTent
         }
     }
 
+    ///Wakes the other thread up if it is sleeping in the tent.
     fn wake_up(&self) -> bool
     {
         let mut state = self.arc.state.lock().unwrap();
@@ -457,6 +461,20 @@ impl OneThreadTent
         else
         {
             println!("OneThreadTent.wake_up says: The tent is empty, there is no one to wake up!");
+            return false;
+        }
+    }
+
+    ///Tells you if the tent is occupied by the other thread (if you can call this function, your thread is _not_ sleeping in the tent, so you know it's the other one).
+    fn is_occupied(&self) -> bool
+    {
+        let state = self.arc.state.lock().unwrap();
+        if (*state == TentState::Occupied) | (*state == TentState::Woken_Up)
+        {
+            return true;
+        }
+        else
+        {
             return false;
         }
     }
@@ -480,7 +498,7 @@ impl Drop for OneThreadTent
 }
 
 
-pub type FFIData = *mut (Producer, thread::JoinHandle<()>);
+pub type FFIData = *mut (Producer, OneThreadTent, Arc<AtomicBool>);
 
 
 fn render_text(set: &TextInsertSet, text_buffer: &mut TextBufferInternal)
@@ -564,15 +582,18 @@ unsafe fn expandDynamicArray_uint32 (array: &mut DynamicArray_uint32, new_length
 }
 
 #[no_mangle]
-pub unsafe extern fn start_backend (own_port: u16, other_port: u16, sync_bit: *mut u8, textbuffer_ptr: *mut TextBuffer) -> *mut (Producer, thread::JoinHandle<()>)
+pub unsafe extern fn start_backend (own_port: u16, other_port: u16, sync_bit: *mut u8, textbuffer_ptr: *mut TextBuffer) -> FFIData
 {
     start_backend_safe(own_port, other_port, sync_bit, textbuffer_ptr)
 }
 
-fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text_buffer_ptr: *mut TextBuffer) -> *mut (Producer, thread::JoinHandle<()>)
+fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text_buffer_ptr: *mut TextBuffer) -> FFIData
 {
 	
 	let (input_sender, input_receiver): (Producer, Consumer) = Spsc_255::new();
+    let (tent, other_thread_tent) = OneThreadTent::new();
+    let is_buffer_synchronized = Arc::new(AtomicBool::new(true));
+    let is_buffer_synchronized_clone = is_buffer_synchronized.clone();
 
     let c_pointers = ThreadPointerWrapper { text_buffer: c_text_buffer_ptr, sync_bit: sync_bit };
 	
@@ -731,7 +752,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                             {
                                 *c_pointers.sync_bit = 1;
                             }
-                            thread::park();
+                            tent.sleep();
                             
                             //copy
                             unsafe
@@ -751,11 +772,10 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                                     {
                                         *c_text_buffer.text.array.offset(offset as isize) = *character as u32;
                                     }
+                                    is_buffer_synchronized.store(true, Ordering::Release); //release to make sure the buffer changes get to c
                                 }
-                                *c_pointers.sync_bit = 2;
                             }
-
-
+                            tent.wake_up();
                         },
 
                         None => println!("Got some keypresses, but weren't initialized.")
@@ -765,7 +785,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
 		}
 	});
 	
-	let return_box = Box::new((input_sender, handle));
+	let return_box = Box::new((input_sender, other_thread_tent, is_buffer_synchronized_clone));
 	return Box::into_raw(return_box);
 }
 
@@ -911,7 +931,9 @@ pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: FFIData)
 {
 	let mut c_box = Box::from_raw(box_ptr);
 	{
-		let (ref sender, _) = *c_box;
+		let (ref sender, ref tent, ref is_buffer_synchronized) = *c_box;
+        is_buffer_synchronized.store(false, Ordering::Relaxed); //TODO: maybe release and put it after the loop?
+
 		let mut i = 0;
 		loop
 		{
@@ -921,10 +943,11 @@ pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: FFIData)
 			}
 			else
 			{
-				if sender.push(*text.offset(i)) == false
+				while sender.push(*text.offset(i)) == false
                 {
                     println!("rust_text_input says: keypress buffer has run full");
-                } //TODO: perhaps make a blocking push here? Though it is extremely unlikely that the buffer will ever run full...
+                    tent.sleep();
+                }
 			}
             i += 1;
 		}
@@ -937,10 +960,13 @@ pub unsafe extern fn rust_sync_text (ffi_data: FFIData)
 {
     let mut ffi_box = Box::from_raw(ffi_data);
     {
-        let (_, ref other_thread) = *ffi_box;
+        let (_, ref tent, _) = *ffi_box;
 
-        other_thread.thread().unpark();
+        if tent.is_occupied() //we are ready for syncing
+        {
+            tent.wake_up();
+            tent.sleep(); //TODO: maybe c can copy the pixel buffer in the meantime?
+        }
     }
-    //TODO: for now, c will have to busy wait on the sync bit. change this to a condvar? or parking?
     mem::forget(ffi_box);
 }

@@ -1946,13 +1946,7 @@ int main (void)
         SDL_Delay(30);//TODO: how big should the delay be?
 
         //TEST
-        if (sync_bit == 1)
-        {
-            printf("Sync!\n");
-            rust_sync_text(ffi_box_ptr);
-            while (sync_bit == 1);
-            sync_bit = 0;
-        }
+        rust_sync_text(ffi_box_ptr);
 
     }
 
