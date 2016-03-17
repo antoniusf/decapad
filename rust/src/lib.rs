@@ -311,7 +311,7 @@ pub struct ThreadPointerWrapper
 unsafe impl Send for ThreadPointerWrapper {}
 
 
-pub type FFIData = *mut (Producer, OneThreadTent, Arc<AtomicBool>);
+pub type FFIData = *mut (Producer, OneThreadTent, Arc<AtomicBool>, Arc<AtomicBool>); //TODO: struct
 
 
 fn render_text(set: &TextInsertSet, text_buffer: &mut TextBufferInternal)
@@ -406,11 +406,13 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
 	let (input_sender, input_receiver): (Producer, Consumer) = Spsc_255::new();
     let (tent, other_thread_tent) = OneThreadTent::new();
     let is_buffer_synchronized = Arc::new(AtomicBool::new(true));
+    let is_buffer_locked = Arc::new(AtomicBool::new(false));
     let is_buffer_synchronized_clone = is_buffer_synchronized.clone();
+    let is_buffer_locked_clone = is_buffer_locked.clone();
 
     let c_pointers = ThreadPointerWrapper { text_buffer: c_text_buffer_ptr, sync_bit: sync_bit };
 	
-	thread::spawn(move ||
+	thread::Builder::new().name("Rust".to_string()).spawn(move ||
 	{
         //set up data structures
         let mut set: TextInsertSet = Vec::new();
@@ -532,14 +534,6 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                     {
                         Some(ref mut inner_backend_state) =>
                         {
-                            //update cursor
-                            unsafe
-                            {
-                                let c_text_buffer = &*c_pointers.text_buffer;
-                                text_buffer.cursor_globalPos = c_text_buffer.cursor as u32;
-                                text_buffer.cursor_charPos = Some(c_text_buffer.update_hint_cursor_charPos as u8);
-                                text_buffer.cursor_ID = Some(c_text_buffer.update_hint_cursor_ID as u32);
-                            }
 
                             let new_text = str::from_utf8(&new_text_raw[..]).expect("Got invalid UTF-8 from SDL!");
 
@@ -549,6 +543,18 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                                 if character == 127 as char
                                 {
                                     //delete_letter
+                                }
+                                else if character == 31 as char //ASCII unit separator: sent to indicate that the previous stream of text is terminated and cursor position must be updated
+                                {
+                                    //update cursor
+                                    unsafe
+                                    {
+                                        let c_text_buffer = &*c_pointers.text_buffer;
+                                        text_buffer.cursor_globalPos = c_text_buffer.cursor as u32;
+                                    }
+                                    text_buffer.active_insert = None;
+                                    text_buffer.cursor_ID = None;
+                                    text_buffer.cursor_charPos = None;
                                 }
                                 else
                                 {
@@ -561,23 +567,19 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                             println!("Newly rendered text: {:?}", &text_buffer.text);
                             println!("Data: {:?}", &set);
 
-                            unsafe
-                            {
-                                *c_pointers.sync_bit = 1;
-                            }
                             tent.sleep();
                             
                             //copy
                             unsafe
                             {
+                                let mut c_text_buffer = &mut *c_pointers.text_buffer;
+                                c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
                                 if input_receiver.len() > 0
                                 {
                                     //abort: process the new keypresses first, then try syncing again.
                                 }
                                 else
                                 {
-                                    let mut c_text_buffer = &mut *c_pointers.text_buffer;
-                                    c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
                                     c_text_buffer.ahead_cursor = c_text_buffer.cursor;
                                     expandDynamicArray_uint32(&mut c_text_buffer.text, text_buffer.text.len());
                                     c_text_buffer.text.length = text_buffer.text.len() as c_long;
@@ -588,7 +590,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                                     is_buffer_synchronized.store(true, Ordering::Release); //release to make sure the buffer changes get to c
                                 }
                             }
-                            tent.wake_up();
+                            is_buffer_locked.store(false, Ordering::Release);
                         },
 
                         None => println!("Got some keypresses, but weren't initialized.")
@@ -598,7 +600,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
 		}
 	});
 	
-	let return_box = Box::new((input_sender, other_thread_tent, is_buffer_synchronized_clone));
+	let return_box = Box::new((input_sender, other_thread_tent, is_buffer_synchronized_clone, is_buffer_locked_clone));
 	return Box::into_raw(return_box);
 }
 
@@ -651,8 +653,9 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
             if active_insert.content.len() < 255
             {
                 active_insert.content.push(character);
+                text_buffer.cursor_ID = Some(active_insert.ID);
+                text_buffer.cursor_charPos = Some(active_insert.content.len() as u8 - 1);
                 network.send_queue.push_back(active_insert_ID);
-                //TODO: update hints?
             }
             else
             {
@@ -684,7 +687,7 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
             }
             else
             {
-                (text_buffer.ID_table[(position-1) as usize], text_buffer.charPos_table[(position-1) as usize] + 1)
+                (text_buffer.ID_table[position as usize], text_buffer.charPos_table[position as usize])
             }
         }
         else
@@ -706,7 +709,7 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
                 }
                 else
                 {
-                    (left_insert.ID, text_buffer.charPos_table[(position-1) as usize])
+                    (left_insert.ID, text_buffer.charPos_table[(position-1) as usize] +1)
                 }
             }
         };
@@ -744,8 +747,8 @@ pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: FFIData)
 {
 	let c_box = Box::from_raw(box_ptr);
 	{
-		let (ref sender, ref tent, ref is_buffer_synchronized) = *c_box;
-        is_buffer_synchronized.store(false, Ordering::Relaxed); //TODO: maybe release and put it after the loop?
+		let (ref sender, ref tent, ref is_buffer_synchronized, _) = *c_box;
+        is_buffer_synchronized.store(false, Ordering::Relaxed); //TODO: Ordering?
 
 		let mut i = 0;
 		loop
@@ -773,12 +776,15 @@ pub unsafe extern fn rust_sync_text (ffi_data: FFIData)
 {
     let ffi_box = Box::from_raw(ffi_data);
     {
-        let (_, ref tent, _) = *ffi_box;
+        let (_, ref tent, _, ref is_buffer_locked) = *ffi_box;
 
         if tent.is_occupied() //we are ready for syncing
         {
             tent.wake_up();
-            tent.sleep(); //TODO: maybe c can copy the pixel buffer in the meantime?
+            is_buffer_locked.store(true, Ordering::Relaxed);
+            while is_buffer_locked.load(Ordering::Acquire) == true
+            {
+            }
         }
     }
     mem::forget(ffi_box);

@@ -1,5 +1,6 @@
 #![allow(non_camel_case_types)]
 
+use std::thread;
 use std::sync::{Arc, Condvar, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::cell::Cell;
@@ -140,7 +141,7 @@ impl OneThreadTent
         
         else
         {
-            println!("OneThreadTent.sleep says: Can't go to sleep, there's already someone in the tent!");
+            println!("OneThreadTent.sleep (called from thread {:?}) says: Can't go to sleep, there's already someone in the tent!", thread::current().name());
             return false;
         }
     }
@@ -158,7 +159,7 @@ impl OneThreadTent
 
         else
         {
-            println!("OneThreadTent.wake_up says: The tent is empty, there is no one to wake up!");
+            println!("OneThreadTent.wake_up (called from thread {:?})says: The tent is empty, there is no one to wake up!", thread::current().name());
             return false;
         }
     }
@@ -180,7 +181,7 @@ impl OneThreadTent
 
 impl Drop for OneThreadTent
 {
-    fn drop(&mut self)
+    fn drop(&mut self) //TODO: maybe make a fourth TentState for dropped, because threads might wait on the other thread waking up
     {
         self.wake_up(); //Wake up any sleeping threads
         let mut state = self.arc.state.lock().unwrap();

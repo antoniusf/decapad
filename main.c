@@ -1522,7 +1522,7 @@ int main (void)
                         //TODO (maybe): more efficient multi-letter insert
                         for (i=0; i<utf32_encoded.length; i++)
                         {
-                            insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
+                            //insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
                         }
                         blink_timer = 0;
                         rust_text_input(e.text.text, ffi_box_ptr);
@@ -1604,6 +1604,10 @@ int main (void)
                             }
 
                             buffer.activeInsertID = 0;
+                            {
+                                Uint8 separator[2] = {31, 0};
+                                rust_text_input(separator, ffi_box_ptr);
+                            }
                         } break;
 
                         case SDLK_LEFT:
@@ -1625,6 +1629,10 @@ int main (void)
                             }
 
                             buffer.activeInsertID = 0;
+                            {
+                                Uint8 separator[2] = {31, 0};
+                                rust_text_input(separator, ffi_box_ptr);
+                            }
                         } break;
 
                         case SDLK_UP:
@@ -1648,6 +1656,10 @@ int main (void)
 
                             buffer.cursor = i;
                             buffer.activeInsertID = 0;
+                            {
+                                Uint8 separator[2] = {31, 0};
+                                rust_text_input(separator, ffi_box_ptr);
+                            }
                         } break;
 
                         case SDLK_DOWN:
@@ -1656,6 +1668,10 @@ int main (void)
                             for (i=buffer.cursor; (i < buffer.text.length-1) && (buffer.text.array[i] != 10); i++);
                             buffer.cursor = i+1;
                             buffer.activeInsertID = 0;
+                            {
+                                Uint8 separator[2] = {31, 0};
+                                rust_text_input(separator, ffi_box_ptr);
+                            }
                         } break;
 
                         case SDLK_v:
