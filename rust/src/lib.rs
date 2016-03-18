@@ -568,18 +568,21 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                             println!("Data: {:?}", &set);
 
                             tent.sleep();
+                            while is_buffer_locked.load(Ordering::Acquire) == false
+                            {
+                            }
                             
                             //copy
                             unsafe
                             {
-                                let mut c_text_buffer = &mut *c_pointers.text_buffer;
-                                c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
                                 if input_receiver.len() > 0
                                 {
                                     //abort: process the new keypresses first, then try syncing again.
                                 }
                                 else
                                 {
+                                    let mut c_text_buffer = &mut *c_pointers.text_buffer;
+                                    c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
                                     c_text_buffer.ahead_cursor = c_text_buffer.cursor;
                                     expandDynamicArray_uint32(&mut c_text_buffer.text, text_buffer.text.len());
                                     c_text_buffer.text.length = text_buffer.text.len() as c_long;
@@ -598,7 +601,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                 }
 			}
 		}
-	});
+	}).expect("Could not start the backend thread. Good bye.");
 	
 	let return_box = Box::new((input_sender, other_thread_tent, is_buffer_synchronized_clone, is_buffer_locked_clone));
 	return Box::into_raw(return_box);
@@ -780,8 +783,8 @@ pub unsafe extern fn rust_sync_text (ffi_data: FFIData)
 
         if tent.is_occupied() //we are ready for syncing
         {
+            is_buffer_locked.store(true, Ordering::Release); //release so all of C's pushes to the buffer definitely make it to Rust
             tent.wake_up();
-            is_buffer_locked.store(true, Ordering::Relaxed);
             while is_buffer_locked.load(Ordering::Acquire) == true
             {
             }
