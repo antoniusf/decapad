@@ -339,12 +339,37 @@ fn render_text(set: &TextInsertSet, text_buffer: &mut TextBufferInternal)
 {
     let mut ID_stack: Vec<u32> = Vec::new();
 
+    //TODO: set cursor_ID and charPos if set to none
+    if text_buffer.cursor_ID.is_none()
+    {
+        let cursor = text_buffer.cursor_globalPos as usize;
+        if cursor > 0
+        {
+            text_buffer.cursor_ID = Some(text_buffer.ID_table[cursor-1]);
+            text_buffer.cursor_charPos = Some(text_buffer.charPos_table[cursor-1]);
+        }
+        else
+        {
+            text_buffer.cursor_ID = Some(0);
+            text_buffer.cursor_charPos = Some(0);
+        }
+    }
+
+
     text_buffer.text.clear();
     text_buffer.ID_table.clear();
     text_buffer.author_table.clear();
     text_buffer.charPos_table.clear();
 
     render_text_internal(&set, 0, 0, &mut *text_buffer, &mut ID_stack);
+
+    if let Some(cursor_ID) = text_buffer.cursor_ID
+    {
+        if cursor_ID == 0 //edge case
+        {
+            text_buffer.cursor_globalPos = 0;
+        }
+    }
 
 }
 
@@ -563,10 +588,18 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                             {
                                 if character == 127 as char
                                 {
+                                    if new_text.len() > 1
+                                    {
+                                        render_text(&set, &mut text_buffer); //make sure we get the correct cursor position for deleting...
+                                    }
                                     if text_buffer.cursor_globalPos > 0
                                     {
                                         text_buffer.cursor_globalPos -= 1;
                                         delete_character(text_buffer.cursor_globalPos, &mut set, &mut network, &mut text_buffer);
+
+                                        text_buffer.active_insert = None;
+                                        text_buffer.cursor_ID = None;
+                                        text_buffer.cursor_charPos = None;
                                     }
                                 }
                                 else if character == 31 as char //ASCII unit separator: sent to indicate that the previous stream of text is terminated and cursor position must be updated
@@ -747,7 +780,7 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
             {
                 ID: state.start_ID,
                 parent: parent,
-                author: state.start_ID,
+                author: state.author_ID,
                 charPos: parent_charPos,
                 lock: 0,
                 content: vec![character]

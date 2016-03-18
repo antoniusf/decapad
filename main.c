@@ -1575,8 +1575,10 @@ int main (void)
                             {
                                 if (program_state == STATE_PAD)
                                 {
-                                    buffer.cursor--;
-                                    delete_letter (&set, &buffer, &network);
+                                    //buffer.cursor--;
+                                    //delete_letter (&set, &buffer, &network);
+                                    Uint8 backspace_data[2] = {127, 0};
+                                    rust_text_input(backspace_data, ffi_box_ptr);
                                 }
                                 else if (program_state == STATE_LOGIN)
                                 {
