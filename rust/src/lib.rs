@@ -266,6 +266,27 @@ impl NetworkState
             _ => ()
         }
     }
+
+    fn enqueue_insert (&mut self, ID: u32)
+    {
+        let do_enqueue =
+        {//we need to make this an extra block, because as_slices makes a borrow
+            let (a, b) = self.send_queue.as_slices();
+            if (a.contains(&ID)) | (b.contains(&ID))
+            {
+                false
+            }
+            else
+            {
+                true
+            }
+        };
+
+        if do_enqueue
+        {
+            self.send_queue.push_back(ID);
+        }
+    }
 }
 
 #[repr(C)]
@@ -542,7 +563,11 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                             {
                                 if character == 127 as char
                                 {
-                                    //delete_letter
+                                    if text_buffer.cursor_globalPos > 0
+                                    {
+                                        text_buffer.cursor_globalPos -= 1;
+                                        delete_character(text_buffer.cursor_globalPos, &mut set, &mut network, &mut text_buffer);
+                                    }
                                 }
                                 else if character == 31 as char //ASCII unit separator: sent to indicate that the previous stream of text is terminated and cursor position must be updated
                                 {
@@ -658,7 +683,7 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
                 active_insert.content.push(character);
                 text_buffer.cursor_ID = Some(active_insert.ID);
                 text_buffer.cursor_charPos = Some(active_insert.content.len() as u8 - 1);
-                network.send_queue.push_back(active_insert_ID);
+                network.enqueue_insert(active_insert_ID);
             }
             else
             {
@@ -743,6 +768,20 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
                 
 
 }
+
+fn delete_character (position: u32, set: &mut TextInsertSet, network: &mut NetworkState, text_buffer: &mut TextBufferInternal)
+{
+    if (position as usize) < text_buffer.ID_table.len()
+    {
+        let mut insert = get_insert_by_ID_mut(text_buffer.ID_table[position as usize], &mut *set).expect("delete_letter says: ID_table contains at least one ID that is not associated to any insert in our vector. This should not happen.");
+
+        insert.content[text_buffer.charPos_table[position as usize] as usize] = 127 as char;
+        network.enqueue_insert(insert.ID);
+        //TODO: send_now
+    }
+}
+
+
 
 
 #[no_mangle]
