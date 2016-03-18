@@ -969,7 +969,10 @@ void
 rust_text_input (const Uint8 *text, void *ffi_box_ptr);
 
 void
-rust_sync_text (void *ffi_box_ptr);
+rust_try_sync_text (void *ffi_box_ptr);
+
+void
+rust_blocking_sync_text (void *ffi_box_ptr);
 
 void
 render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buffer, Uint32 cursor_ID, Uint8 cursor_charPos, DynamicArray_uint32 *ID_stack)
@@ -1585,6 +1588,8 @@ int main (void)
 
                         case SDLK_RIGHT:
                         {
+                            rust_blocking_sync_text(ffi_box_ptr);
+
                             if (e.key.keysym.mod & KMOD_SHIFT) //seek to next word
                             {
                                 int i;
@@ -1612,6 +1617,8 @@ int main (void)
 
                         case SDLK_LEFT:
                         {
+                            rust_blocking_sync_text(ffi_box_ptr);
+
                             if (e.key.keysym.mod & KMOD_SHIFT) //seek to previous word
                             {
                                     int i = buffer.cursor-1;
@@ -1637,6 +1644,8 @@ int main (void)
 
                         case SDLK_UP:
                         {
+                            rust_blocking_sync_text(ffi_box_ptr);
+
                             int i;
                             int first = 0;
                             for (i=buffer.cursor; (i > 0); i--)
@@ -1664,6 +1673,8 @@ int main (void)
 
                         case SDLK_DOWN:
                         {
+                            rust_blocking_sync_text(ffi_box_ptr);
+
                             int i;
                             for (i=buffer.cursor; (i < buffer.text.length-1) && (buffer.text.array[i] != 10); i++);
                             buffer.cursor = i+1;
@@ -1962,7 +1973,7 @@ int main (void)
         SDL_Delay(30);//TODO: how big should the delay be?
 
         //TEST
-        rust_sync_text(ffi_box_ptr);
+        rust_try_sync_text(ffi_box_ptr);
 
     }
 

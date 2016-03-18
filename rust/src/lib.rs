@@ -774,20 +774,38 @@ pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: FFIData)
 	mem::forget(c_box);
 }
 
+fn rust_try_sync_text_internal (tent: &OneThreadTent, is_buffer_locked: &Arc<AtomicBool>)
+{
+    if tent.is_occupied() //we are ready for syncing TODO: maybe use an explicit atomic bool here?
+    {
+        is_buffer_locked.store(true, Ordering::Release); //release so all of C's pushes to the buffer definitely make it to Rust
+        tent.wake_up();
+        while is_buffer_locked.load(Ordering::Acquire) == true
+        {
+        }
+    }
+}
+
 #[no_mangle]
-pub unsafe extern fn rust_sync_text (ffi_data: FFIData)
+pub unsafe extern fn rust_try_sync_text (ffi_data: FFIData)
 {
     let ffi_box = Box::from_raw(ffi_data);
     {
         let (_, ref tent, _, ref is_buffer_locked) = *ffi_box;
+        rust_try_sync_text_internal(tent, is_buffer_locked);
+    }
+    mem::forget(ffi_box);
+}
 
-        if tent.is_occupied() //we are ready for syncing
+#[no_mangle]
+pub unsafe extern fn rust_blocking_sync_text (ffi_data: FFIData)
+{
+    let ffi_box = Box::from_raw(ffi_data);
+    {
+        let (_, ref tent, ref is_buffer_synchronized, ref is_buffer_locked) = *ffi_box;
+        while is_buffer_synchronized.load(Ordering::Acquire) == false //TODO: really busy wait here?
         {
-            is_buffer_locked.store(true, Ordering::Release); //release so all of C's pushes to the buffer definitely make it to Rust
-            tent.wake_up();
-            while is_buffer_locked.load(Ordering::Acquire) == true
-            {
-            }
+            rust_try_sync_text_internal(tent, is_buffer_locked);
         }
     }
     mem::forget(ffi_box);
