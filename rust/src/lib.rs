@@ -60,7 +60,6 @@ struct TextInsert
     parent: u32,
     author: u32,
     charPos: u8,
-    lock: u8,
     content: Vec<char>
 }
 
@@ -201,7 +200,6 @@ impl TextInsert
                                     author: author,
                                     charPos: charPos,
                                     content: content,
-                                    lock: 0 //TODO: remove lock?
                                 }
                             );
                         }
@@ -786,7 +784,6 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
                 parent: parent,
                 author: state.author_ID,
                 charPos: parent_charPos,
-                lock: 0,
                 content: vec![character]
             };
         
