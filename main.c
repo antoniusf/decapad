@@ -1548,7 +1548,9 @@ int main (void)
                         {
                             if (program_state == STATE_PAD)
                             {
-                                insert_letter(&set, &buffer, 10, &network);
+                                //insert_letter(&set, &buffer, 10, &network);
+                                Uint8 enter_data[2] = {10, 0};
+                                rust_text_input(enter_data, ffi_box_ptr);
                             }
                             else if (program_state == STATE_LOGIN)
                             {
