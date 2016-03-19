@@ -4,7 +4,8 @@
 #![allow(unused_imports)]
 
 mod sync;
-use sync::{OneThreadTent, Spsc_255, Producer, Consumer};
+use sync::OneThreadTent;
+use sync::spsc_255::{self, Producer, Consumer};
 
 use std::{mem, net, str, char, thread};
 
@@ -447,7 +448,7 @@ pub unsafe extern fn start_backend (own_port: u16, other_port: u16, sync_bit: *m
 fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text_buffer_ptr: *mut TextBuffer) -> FFIData
 {
 	
-	let (input_sender, input_receiver): (Producer, Consumer) = Spsc_255::new();
+	let (input_sender, input_receiver): (Producer, Consumer) = spsc_255::new();
     let (tent, other_thread_tent) = OneThreadTent::new();
     let is_buffer_synchronized = Arc::new(AtomicBool::new(true));
     let is_buffer_locked = Arc::new(AtomicBool::new(false));

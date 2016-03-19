@@ -5,29 +5,33 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::cell::Cell;
 
-pub struct Spsc_255
+pub mod spsc_255
 {
-    buffer: [Cell<u8>; 256],
-    pop_index: AtomicUsize,
-    push_index: AtomicUsize,
-}
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::cell::Cell;
 
-pub struct Consumer
-{
-    queue: Arc<Spsc_255>
-}
+    struct Spsc255Internal
+    {
+        buffer: [Cell<u8>; 256],
+        pop_index: AtomicUsize,
+        push_index: AtomicUsize,
+    }
 
-pub struct Producer
-{
-    queue: Arc<Spsc_255>
-}
+    pub struct Consumer
+    {
+        queue: Arc<Spsc255Internal>
+    }
 
-impl Spsc_255
-{
+    pub struct Producer
+    {
+        queue: Arc<Spsc255Internal>
+    }
+
     pub fn new() -> (Producer, Consumer)
     {
         let queue = Arc::new(
-            Spsc_255
+            Spsc255Internal
             {
                 buffer: [Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8), Cell::new(0u8)], //sigh.
                 pop_index: AtomicUsize::new(0),
@@ -37,54 +41,54 @@ impl Spsc_255
 
         return (Producer {queue: queue.clone()}, Consumer{queue: queue.clone()});
     }
-}
 
-impl Producer
-{
-    pub fn push (&self, item: u8) -> bool
+    impl Producer
     {
-        let push_index: u8 = self.queue.push_index.load(Ordering::Relaxed) as u8;
-        if push_index.wrapping_add(1) != self.queue.pop_index.load(Ordering::Acquire) as u8
+        pub fn push (&self, item: u8) -> bool
         {
-            self.queue.buffer[push_index as usize].set(item);
-            self.queue.push_index.store(push_index.wrapping_add(1) as usize, Ordering::Release);
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
-}
-
-unsafe impl Send for Producer {} //TODO: formal proof?
-
-impl Consumer
-{
-    pub fn pop (&self) -> Option<u8>
-    {
-        let pop_index: u8 = self.queue.pop_index.load(Ordering::Relaxed) as u8;
-        if pop_index != self.queue.push_index.load(Ordering::Acquire) as u8
-        {
-            let value = self.queue.buffer[pop_index as usize].get();
-            self.queue.pop_index.store(pop_index.wrapping_add(1) as usize, Ordering::Release);
-            return Some(value);
-        }
-        else
-        {
-            return None;
+            let push_index: u8 = self.queue.push_index.load(Ordering::Relaxed) as u8;
+            if push_index.wrapping_add(1) != self.queue.pop_index.load(Ordering::Acquire) as u8
+            {
+                self.queue.buffer[push_index as usize].set(item);
+                self.queue.push_index.store(push_index.wrapping_add(1) as usize, Ordering::Release);
+                return true;
+            }
+            else
+            {
+                return false;
+            }
         }
     }
 
-    /// Returns a minimum bound of the current length of the queue. In most cases, the value is probably exact, but (due to threading) it is also possible that the queue is longer that.
-    /// If do need an exact value, you should probably make sure that the other thread does not push in between and use an atomic fence to ensure you are seeing the most updated push_index.
-    pub fn len (&self) -> u8
-    {
-        return (self.queue.push_index.load(Ordering::Relaxed) as u8) - (self.queue.pop_index.load(Ordering::Relaxed) as u8)
-    }
-}
+    unsafe impl Send for Producer {} //TODO: formal proof?
 
-unsafe impl Send for Consumer {} //TODO: formal proof?
+    impl Consumer
+    {
+        pub fn pop (&self) -> Option<u8>
+        {
+            let pop_index: u8 = self.queue.pop_index.load(Ordering::Relaxed) as u8;
+            if pop_index != self.queue.push_index.load(Ordering::Acquire) as u8
+            {
+                let value = self.queue.buffer[pop_index as usize].get();
+                self.queue.pop_index.store(pop_index.wrapping_add(1) as usize, Ordering::Release);
+                return Some(value);
+            }
+            else
+            {
+                return None;
+            }
+        }
+
+        /// Returns a minimum bound of the current length of the queue. In most cases, the value is probably exact, but (due to threading) it is also possible that the queue is longer that.
+        /// If do need an exact value, you should probably make sure that the other thread does not push in between and use an atomic fence to ensure you are seeing the most updated push_index.
+        pub fn len (&self) -> u8
+        {
+            return (self.queue.push_index.load(Ordering::Relaxed) as u8) - (self.queue.pop_index.load(Ordering::Relaxed) as u8)
+        }
+    }
+
+    unsafe impl Send for Consumer {} //TODO: formal proof?
+}
 
 
 #[derive(PartialEq)]
