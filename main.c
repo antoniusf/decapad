@@ -700,7 +700,7 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
         if (character == 10) {
             linewrap = 1;
 
-            if ( show_cursor == 1 && i == buffer->cursor )
+            if ( show_cursor == 1 && i == buffer->ahead_cursor )
             {
                 draw_cursor(x, y, pixels, fontface);
             }
@@ -812,7 +812,7 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
                 }
             }
 
-            if ( show_cursor == 1 && i == buffer->cursor )
+            if ( show_cursor == 1 && i == buffer->ahead_cursor )
             {
                 draw_cursor(x, y, pixels, fontface);
             }
@@ -821,7 +821,7 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
 
             if ( (set_cursor_x >= 0) && (set_cursor_x <= x-(advance>>1)) && (set_cursor_y <= y) )
             {
-                buffer->cursor = i;
+                buffer->cursor = i;//TODO: what's with this?
                 set_cursor_x = set_cursor_y = -1; //click handled
             }
 
@@ -850,7 +850,7 @@ draw_text (TextBuffer *buffer, Uint32 *text, Uint32 *pixels, char show_cursor, F
         buffer->cursor = i;
     }
 
-    if ( show_cursor == 1 && i == buffer->cursor )
+    if ( show_cursor == 1 && i == buffer->ahead_cursor )
     {
         draw_cursor(x, y, pixels, fontface);
     }
@@ -1264,6 +1264,17 @@ delete_letter ( TextInsertSet *set, TextBuffer *buffer, network_data *network )
 }
 
 
+void ahead_insert_letter ( TextBuffer *buffer, Uint32 letter )
+{
+    insertIntoDynamicArray_uint32(&buffer->text, letter, buffer->ahead_cursor);
+}
+
+void ahead_delete_letter ( TextBuffer *buffer )
+{
+    deleteFromDynamicArray_uint32(&buffer->text, buffer->ahead_cursor);
+}
+
+
 void
 login_insert_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, DynamicArray_uint32 *password, DynamicArray_uint32 *pad_with, Uint32 letter )
 {
@@ -1283,6 +1294,7 @@ login_insert_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
         }
         insertIntoDynamicArray_uint32(username, letter, insert_pos);
         buffer->cursor = insert_pos + 10 + 1;
+        buffer->ahead_cursor = buffer->cursor;
     }
     
     else if (line_nr == 1)
@@ -1295,6 +1307,7 @@ login_insert_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
         }
         insertIntoDynamicArray_uint32(password, letter, insert_pos);
         buffer->cursor = insert_pos + 10 + password_line_offset + 1;
+        buffer->ahead_cursor = buffer->cursor;
     }
     else if (line_nr == 2)
     {
@@ -1306,6 +1319,7 @@ login_insert_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
         }
         insertIntoDynamicArray_uint32(pad_with, letter, insert_pos);
         buffer->cursor = insert_pos + 10 + pad_with_line_offset + 1;
+        buffer->ahead_cursor = buffer->cursor;
     }
 
     update_login_buffer(buffer, username, password, pad_with);
@@ -1323,6 +1337,7 @@ login_delete_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
         {
             deleteFromDynamicArray_uint32(username, delete_pos);
             buffer->cursor--;
+            buffer->ahead_cursor = buffer->cursor;
         }
     }
 
@@ -1334,6 +1349,7 @@ login_delete_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
         {
             deleteFromDynamicArray_uint32(password, delete_pos);
             buffer->cursor--;
+            buffer->ahead_cursor = buffer->cursor;
         }
     }
 
@@ -1345,6 +1361,7 @@ login_delete_letter ( TextBuffer *buffer, DynamicArray_uint32 *username, Dynamic
         {
             deleteFromDynamicArray_uint32(pad_with, delete_pos);
             buffer->cursor--;
+            buffer->ahead_cursor = buffer->cursor;
         }
     }
 }
@@ -1525,7 +1542,8 @@ int main (void)
                         //TODO (maybe): more efficient multi-letter insert
                         for (i=0; i<utf32_encoded.length; i++)
                         {
-                            //insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
+                            ahead_insert_letter(&buffer, utf32_encoded.array[i]);
+                            buffer.ahead_cursor++;
                         }
                         blink_timer = 0;
                         rust_text_input(e.text.text, ffi_box_ptr);
@@ -1548,7 +1566,8 @@ int main (void)
                         {
                             if (program_state == STATE_PAD)
                             {
-                                //insert_letter(&set, &buffer, 10, &network);
+                                ahead_insert_letter(&buffer, 10);
+                                buffer.ahead_cursor++;
                                 Uint8 enter_data[2] = {10, 0};
                                 rust_text_input(enter_data, ffi_box_ptr);
                             }
@@ -1556,7 +1575,7 @@ int main (void)
                             {
                                 if (username.length > 0 && pad_with.length > 0)
                                 {
-                                    buffer.cursor = 0;
+                                    buffer.cursor = buffer.ahead_cursor = 0;
                                     buffer.text.length = 0;
                                     program_state = STATE_PAD;
 
@@ -1566,7 +1585,7 @@ int main (void)
                                 else
                                 {
                                     int line_nr = get_line_nr(&buffer.text, buffer.cursor);
-                                    buffer.cursor = seek_to_line(&buffer.text, line_nr+1);
+                                    buffer.cursor = buffer.ahead_cursor = seek_to_line(&buffer.text, line_nr+1);
                                 }
                             }
                         } break;
@@ -1577,8 +1596,8 @@ int main (void)
                             {
                                 if (program_state == STATE_PAD)
                                 {
-                                    //buffer.cursor--;
-                                    //delete_letter (&set, &buffer, &network);
+                                    buffer.ahead_cursor--;
+                                    ahead_delete_letter (&buffer);
                                     Uint8 backspace_data[2] = {127, 0};
                                     rust_text_input(backspace_data, ffi_box_ptr);
                                 }
