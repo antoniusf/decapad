@@ -345,7 +345,7 @@ fn render_text(set: &TextInsertSet, text_buffer: &mut TextBufferInternal)
         if cursor > 0
         {
             text_buffer.cursor_ID = Some(text_buffer.ID_table[cursor-1]);
-            text_buffer.cursor_charPos = Some(text_buffer.charPos_table[cursor-1]);
+            text_buffer.cursor_charPos = Some(text_buffer.charPos_table[cursor-1] +1);
         }
         else
         {
@@ -405,6 +405,11 @@ fn render_text_internal(set: &TextInsertSet, parentID: u32, charPos: u8, text_bu
 
         for (position, character) in insert.content.iter().enumerate()
         {
+            if (Some(insert.ID) == text_buffer.cursor_ID) & (Some(position as u8) == text_buffer.cursor_charPos) //TODO: maybe keep information on where the cursor is attached.
+            {
+                text_buffer.cursor_globalPos = text_buffer.text.len();
+            }
+
             render_text_internal(set, insert.ID, position as u8, &mut *text_buffer, ID_stack);
             if *character != 127 as char
             {
@@ -413,11 +418,11 @@ fn render_text_internal(set: &TextInsertSet, parentID: u32, charPos: u8, text_bu
                 text_buffer.author_table.push(insert.author);
                 text_buffer.charPos_table.push(position as u8);
             }
+        }
 
-            if (Some(insert.ID) == text_buffer.cursor_ID) & (Some(position as u8) == text_buffer.cursor_charPos)
-            {
-                text_buffer.cursor_globalPos = text_buffer.text.len();
-            }
+        if (Some(insert.ID) == text_buffer.cursor_ID) & (Some(insert.content.len() as u8) == text_buffer.cursor_charPos)
+        {
+            text_buffer.cursor_globalPos = text_buffer.text.len();
         }
 
         render_text_internal(set, insert.ID, insert.content.len() as u8, &mut *text_buffer, ID_stack);
@@ -725,7 +730,7 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
             {
                 active_insert.content.push(character);
                 text_buffer.cursor_ID = Some(active_insert.ID);
-                text_buffer.cursor_charPos = Some(active_insert.content.len() as u8 - 1);
+                text_buffer.cursor_charPos = Some(active_insert.content.len() as u8);
                 network.enqueue_insert(active_insert_ID);
             }
             else
@@ -807,7 +812,7 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
         state.start_ID += 1;
 
         text_buffer.cursor_ID = Some(new_insert.ID);
-        text_buffer.cursor_charPos = Some(0);
+        text_buffer.cursor_charPos = Some(1);
 
         text_buffer.active_insert = Some(new_insert.ID);
         network.send_queue.push_back(new_insert.ID);
