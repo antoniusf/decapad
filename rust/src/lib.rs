@@ -338,7 +338,7 @@ fn render_text(set: &TextInsertSet, text_buffer: &mut TextBufferInternal)
 {
     let mut ID_stack: Vec<u32> = Vec::new();
 
-    //TODO: set cursor_ID and charPos if set to none
+    let mut temp_cursor_ID = false;
     if text_buffer.cursor_ID.is_none()
     {
         let cursor = text_buffer.cursor_globalPos;
@@ -352,6 +352,7 @@ fn render_text(set: &TextInsertSet, text_buffer: &mut TextBufferInternal)
             text_buffer.cursor_ID = Some(0);
             text_buffer.cursor_charPos = Some(0);
         }
+        temp_cursor_ID = true;
     }
 
 
@@ -368,6 +369,12 @@ fn render_text(set: &TextInsertSet, text_buffer: &mut TextBufferInternal)
         {
             text_buffer.cursor_globalPos = 0;
         }
+    }
+
+    if temp_cursor_ID
+    {
+        text_buffer.cursor_ID = None;
+        text_buffer.cursor_charPos = None;
     }
 
 }
@@ -597,7 +604,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                                         delete_character(text_buffer.cursor_globalPos, &mut set, &mut network, &mut text_buffer);
 
                                         text_buffer.active_insert = None;
-                                        text_buffer.cursor_ID = None;
+                                        text_buffer.cursor_ID = None; //TODO: add sorting inserts by timestamp + ID (render_text), enable setting cursor_ID and charPos here
                                         text_buffer.cursor_charPos = None;
                                     }
                                 }
@@ -743,37 +750,45 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
         let position = text_buffer.cursor_globalPos;
 
         let (parent, parent_charPos): (u32, u8) =
-        if position == 0
+        if let (Some(ID), Some(charPos)) = (text_buffer.cursor_ID, text_buffer.cursor_charPos)
         {
-            if set.len() == 0
-            {
-                (0, 0)
-            }
-            else
-            {
-                (text_buffer.ID_table[position], text_buffer.charPos_table[position])
-            }
+            (ID, charPos)
         }
+
         else
         {
-            if position == text_buffer.ID_table.len()
+            if position == 0
             {
-                (text_buffer.ID_table[position-1], text_buffer.charPos_table[position-1] + 1)
-            }
-            else
-            {
-                let left_insert = get_insert_by_ID(text_buffer.ID_table[position-1], &*set).expect("insert_character says: ID_table contains at least one ID that is does not belong to any insert currently in the insert set.");
-
-                let right_insert = get_insert_by_ID(text_buffer.ID_table[position], &*set).expect("insert_character says: ID_table contains at least one ID that is does not belong to any insert currently in the insert set.");
-
-
-                if left_insert.is_ancestor_of(right_insert, &*set)
+                if set.len() == 0
                 {
-                    (right_insert.ID, text_buffer.charPos_table[position])
+                    (0, 0)
                 }
                 else
                 {
-                    (left_insert.ID, text_buffer.charPos_table[position-1] +1)
+                    (text_buffer.ID_table[position], text_buffer.charPos_table[position])
+                }
+            }
+            else
+            {
+                if position == text_buffer.ID_table.len()
+                {
+                    (text_buffer.ID_table[position-1], text_buffer.charPos_table[position-1] + 1)
+                }
+                else
+                {
+                    let left_insert = get_insert_by_ID(text_buffer.ID_table[position-1], &*set).expect("insert_character says: ID_table contains at least one ID that is does not belong to any insert currently in the insert set.");
+
+                    let right_insert = get_insert_by_ID(text_buffer.ID_table[position], &*set).expect("insert_character says: ID_table contains at least one ID that is does not belong to any insert currently in the insert set.");
+
+
+                    if left_insert.is_ancestor_of(right_insert, &*set)
+                    {
+                        (right_insert.ID, text_buffer.charPos_table[position])
+                    }
+                    else
+                    {
+                        (left_insert.ID, text_buffer.charPos_table[position-1] +1)
+                    }
                 }
             }
         };
@@ -808,7 +823,7 @@ fn delete_character (position: usize, set: &mut TextInsertSet, network: &mut Net
 {
     if position < text_buffer.ID_table.len()
     {
-        let mut insert = get_insert_by_ID_mut(text_buffer.ID_table[position], &mut *set).expect("delete_letter says: ID_table contains at least one ID that is not associated to any insert in our vector. This should not happen.");
+        let mut insert = get_insert_by_ID_mut(text_buffer.ID_table[position], &mut *set).expect("delete_character says: ID_table contains at least one ID that is not associated to any insert in our vector. This should not happen.");
 
         insert.content[text_buffer.charPos_table[position] as usize] = 127 as char;
         network.enqueue_insert(insert.ID);
