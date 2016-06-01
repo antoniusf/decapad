@@ -7,6 +7,8 @@ mod sync;
 use sync::OneThreadTent;
 use sync::spsc_255::{self, Producer, Consumer};
 
+mod tnetstring;
+
 use std::{mem, net, str, char, thread};
 
 use std::os::raw::{c_int, c_long, c_ulong};
