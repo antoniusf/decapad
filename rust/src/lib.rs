@@ -9,7 +9,7 @@ use sync::spsc_255::{self, Producer, Consumer};
 
 mod tnetstring;
 
-use std::{mem, net, str, char, thread};
+use std::{mem, net, str, char, thread, process};
 
 use std::os::raw::{c_int, c_long, c_ulong};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -332,12 +332,29 @@ pub struct ThreadPointerWrapper
 
 unsafe impl Send for ThreadPointerWrapper {}
 
+#[derive(PartialEq, Eq)]
+enum FrontendSyncstate
+{
+    synced,
+    unsynced,
+    syncing
+}
+
+#[derive(PartialEq, Eq)]
+enum BackendSyncstate
+{
+    synced,
+    unsynced,
+    waiting,
+    syncing
+}
 
 pub struct FFIData
 {
     sender: Producer,
+    receiver: Consumer,
     tent: OneThreadTent,
-    is_buffer_synchronized: Arc<AtomicBool>,
+    state: FrontendSyncstate,
     is_buffer_locked: Arc<AtomicBool>
 }
 
@@ -476,6 +493,9 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
     let is_buffer_locked_clone = is_buffer_locked.clone();
 
     let c_pointers = ThreadPointerWrapper { text_buffer: c_text_buffer_ptr, sync_bit: sync_bit };
+
+    let mut syncstate = BackendSyncstate::synced;
+    let (sender, syncstate_receiver) = spsc_255::new();
 	
 	thread::Builder::new().name("Rust".to_string()).spawn(move ||
 	{
@@ -563,7 +583,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                             {
                                 Some(ref backend_state_unpacked) =>
                                 {
-                                    TextInsert::deserialize(&buffer[4..bytes], &mut set, &backend_state_unpacked);
+                                    TextInsert::deserialize(&buffer[4..bytes], &mut set, &backend_state_unpacked); //TODO XXX: update syncstate
                                 },
                                 None => println!("Received data without being initialized first.")
                             }
@@ -597,6 +617,8 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                 {
                     match backend_state
                     {
+                        None => println!("Got some keypresses, but weren't initialized."),
+                        
                         Some(ref mut inner_backend_state) =>
                         {
 
@@ -607,6 +629,13 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                             {
                                 if character == 127 as char
                                 {
+                                    match syncstate
+                                    {
+                                        BackendSyncstate::synced => syncstate = BackendSyncstate::unsynced,
+                                        BackendSyncstate::waiting => syncstate = BackendSyncstate::unsynced,
+                                        _ => ()
+                                    }
+
                                     if new_text.len() > 1
                                     {
                                         render_text(&set, &mut text_buffer); //make sure we get the correct cursor position for deleting...
@@ -621,63 +650,75 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
                                         text_buffer.cursor_charPos = None;
                                     }
                                 }
+
                                 else if character == 31 as char //ASCII unit separator: sent to indicate that the previous stream of text is terminated and cursor position must be updated
                                 {
-                                    //update cursor
-                                    unsafe
-                                    {
-                                        let c_text_buffer = &*c_pointers.text_buffer;
-                                        text_buffer.cursor_globalPos = c_text_buffer.cursor as usize;
-                                        if text_buffer.cursor_globalPos > text_buffer.text.len()
-                                        {
-                                            text_buffer.cursor_globalPos = text_buffer.text.len()
-                                        }
-                                    }
+                                    assert!(syncstate == BackendSyncstate::synced, "Tried to update cursor position (ASCII 31) while not synchronized!");
+                                    let mut new_cursor_pos: usize = input_receiver.blocking_pop() as usize;
+                                    new_cursor_pos += (input_receiver.blocking_pop() as usize)<<8;
+                                    new_cursor_pos += (input_receiver.blocking_pop() as usize)<<16;
+                                    new_cursor_pos += (input_receiver.blocking_pop() as usize)<<24;
+
+                                    assert!(new_cursor_pos <= text_buffer.text.len());
+                                    text_buffer.cursor_globalPos = new_cursor_pos;
+
                                     text_buffer.active_insert = None;
                                     text_buffer.cursor_ID = None;
                                     text_buffer.cursor_charPos = None;
                                 }
+
+                                else if character == 22 as char //ASCII 'SYN'
+                                {
+                                    match syncstate
+                                    {
+                                        BackendSyncstate::synced => panic!("Can't sync while synced"),
+                                        BackendSyncstate::unsynced => assert!(sender.push('f' as u8), "Backend sender queue overflowed"),
+                                        BackendSyncstate::waiting =>
+                                        {
+                                            unsafe
+                                            {
+                                                assert!(input_receiver.len() == 0);
+
+                                                let mut c_text_buffer = &mut *c_pointers.text_buffer;
+                                                c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
+                                                c_text_buffer.ahead_cursor = c_text_buffer.cursor;
+                                                expandDynamicArray_uint32(&mut c_text_buffer.text, text_buffer.text.len());
+                                                c_text_buffer.text.length = text_buffer.text.len() as c_long;
+                                                for (offset, character) in text_buffer.text.iter().enumerate()
+                                                {
+                                                    *c_text_buffer.text.array.offset(offset as isize) = *character as u32;
+                                                }
+                                            }
+                                            is_buffer_locked.store(false, Ordering::Release);
+                                        },
+                                        _ => ()
+                                    }
+                                }
+
                                 else
                                 {
+                                    match syncstate
+                                    {
+                                        BackendSyncstate::synced => syncstate = BackendSyncstate::unsynced,
+                                        BackendSyncstate::waiting => syncstate = BackendSyncstate::unsynced,
+                                        _ => ()
+                                    }
+
                                     insert_character(&mut set, character, &mut network, &mut text_buffer, inner_backend_state);
                                 }
                             }
 
 
-                            render_text(&set, &mut text_buffer);//TODO: initialize with correct cursor position
-                            println!("Newly rendered text: {:?}", &text_buffer.text);
-                            println!("Data: {:?}", &set);
-
-                            tent.sleep();
-                            while is_buffer_locked.load(Ordering::Acquire) == false
+                            if syncstate == BackendSyncstate::unsynced
                             {
-                            }
-                            
-                            //copy
-                            unsafe
-                            {
-                                if input_receiver.len() > 0
-                                {
-                                    //abort: process the new keypresses first, then try syncing again.
-                                }
-                                else
-                                {
-                                    let mut c_text_buffer = &mut *c_pointers.text_buffer;
-                                    c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
-                                    c_text_buffer.ahead_cursor = c_text_buffer.cursor;
-                                    expandDynamicArray_uint32(&mut c_text_buffer.text, text_buffer.text.len());
-                                    c_text_buffer.text.length = text_buffer.text.len() as c_long;
-                                    for (offset, character) in text_buffer.text.iter().enumerate()
-                                    {
-                                        *c_text_buffer.text.array.offset(offset as isize) = *character as u32;
-                                    }
-                                    is_buffer_synchronized.store(true, Ordering::Release); //release to make sure the buffer changes get to c
-                                }
-                            }
-                            is_buffer_locked.store(false, Ordering::Release);
-                        },
+                                render_text(&set, &mut text_buffer);//TODO: initialize with correct cursor position
+                                assert!(sender.push('r' as u8) == true);
+                                syncstate = BackendSyncstate::waiting;
 
-                        None => println!("Got some keypresses, but weren't initialized.")
+                                println!("Newly rendered text: {:?}", &text_buffer.text);
+                                println!("Data: {:?}", &set);
+                            }
+                        }
                     }
                 }
 			}
@@ -687,8 +728,9 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
     let return_box = Box::new( FFIData
                                 {
                                     sender: input_sender,
+                                    receiver: syncstate_receiver,
+                                    state: FrontendSyncstate::synced,
                                     tent: other_thread_tent,
-                                    is_buffer_synchronized: is_buffer_synchronized_clone,
                                     is_buffer_locked: is_buffer_locked_clone
                                 });
 	return Box::into_raw(return_box);
@@ -856,9 +898,9 @@ fn delete_character (position: usize, set: &mut TextInsertSet, network: &mut Net
 #[no_mangle]
 pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: *mut FFIData)
 {
-	let ffi = Box::from_raw(box_ptr);
+	let mut ffi = Box::from_raw(box_ptr);
 	{
-        ffi.is_buffer_synchronized.store(false, Ordering::Relaxed); //TODO: Ordering?
+        ffi.state = FrontendSyncstate::unsynced;
 
 		let mut i = 0;
 		loop
@@ -881,24 +923,59 @@ pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: *mut FFIData)
 	mem::forget(ffi);
 }
 
-fn rust_try_sync_text_internal (tent: &OneThreadTent, is_buffer_locked: &Arc<AtomicBool>)
+fn frontend_finish_sync (ffi: &mut FFIData)
 {
-    if tent.is_occupied() //we are ready for syncing TODO: maybe use an explicit atomic bool here?
+    ffi.is_buffer_locked.store(true, Ordering::Release);
+    if ffi.state == FrontendSyncstate::syncing
     {
-        is_buffer_locked.store(true, Ordering::Release); //release so all of C's pushes to the buffer definitely make it to Rust
-        tent.wake_up();
-        while is_buffer_locked.load(Ordering::Acquire) == true
+        loop
         {
+            if let Some(msg) = ffi.receiver.pop()
+            {
+                if msg == 's' as u8
+                {
+                    ffi.state = FrontendSyncstate::synced;
+                    break;
+                }
+                else if msg == 'f' as u8
+                {
+                    ffi.state = FrontendSyncstate::unsynced;
+                    break;
+                }
+                else
+                {
+                    println!("Frontend thread received a message that was neither 'sync successful' nor 'sync failed' while in 'syncing' state. This should never happen because it indicates a principal bug in program design.");
+                    process::exit(-1);
+                }
+            }
         }
     }
+
+    else
+    {
+        println!("frontend_finish sync was called while not in syncing state. nothing will happen.");
+    }
+
+    assert!(ffi.is_buffer_locked.load(Ordering::Acquire) == false);
 }
 
 #[no_mangle]
 pub unsafe extern fn rust_try_sync_text (ffi_data: *mut FFIData)
 {
-    let ffi = Box::from_raw(ffi_data);
+    let mut ffi = Box::from_raw(ffi_data);
+    if let Some(msg) = ffi.receiver.pop()
     {
-        rust_try_sync_text_internal(&ffi.tent, &ffi.is_buffer_locked);
+        if msg == 'r' as u8
+        {
+            while !ffi.sender.push(22) {} //ASCII 'SYN'
+            ffi.state = FrontendSyncstate::syncing;
+            frontend_finish_sync(&mut *ffi);
+        }
+        else
+        {
+            println!("Frontend thread received a non-'sync ready' message while in state 'unsynced'. This should never happen."); //TODO: really?
+            process::exit(-1);
+        }
     }
     mem::forget(ffi);
 }
@@ -906,11 +983,30 @@ pub unsafe extern fn rust_try_sync_text (ffi_data: *mut FFIData)
 #[no_mangle]
 pub unsafe extern fn rust_blocking_sync_text (ffi_data: *mut FFIData)
 {
-    let ffi = Box::from_raw(ffi_data);
+    let mut ffi = Box::from_raw(ffi_data);
+
+    if ffi.state == FrontendSyncstate::unsynced
     {
-        while ffi.is_buffer_synchronized.load(Ordering::Acquire) == false //TODO: really busy wait here?
+        loop
         {
-            rust_try_sync_text_internal(&ffi.tent, &ffi.is_buffer_locked);
+            if let Some(msg) = ffi.receiver.pop()
+            {
+                if msg == 'r' as u8 //ready for syncing
+                {
+                    while !ffi.sender.push(22) {} //ASCII 'SYN'
+                    ffi.state = FrontendSyncstate::syncing;
+                    frontend_finish_sync(&mut *ffi);
+                    if ffi.state == FrontendSyncstate::synced
+                    {
+                        break;
+                    }
+                }
+                else
+                {
+                    println!("Frontend thread received a non-'sync ready' message while in state 'unsynced'. This should never happen."); //TODO: really?
+                    process::exit(-1);
+                }
+            }
         }
     }
     mem::forget(ffi);
