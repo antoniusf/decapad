@@ -79,6 +79,17 @@ pub mod spsc_255
             }
         }
 
+        pub fn blocking_pop (&self) -> u8
+        {
+            loop
+            {
+                if let Some(value) = self.pop()
+                {
+                    return value;
+                }
+            }
+        }
+
         /// Returns a minimum bound of the current length of the queue. In most cases, the value is probably exact, but (due to threading) it is also possible that the queue is longer that.
         /// If do need an exact value, you should probably make sure that the other thread does not push in between and use an atomic fence to ensure you are seeing the most updated push_index.
         pub fn len (&self) -> u8
