@@ -582,7 +582,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                             {
                                 Some(ref backend_state_unpacked) =>
                                 {
-                                    TextInsert::deserialize(&buffer[4..bytes], &mut set, &backend_state_unpacked); //TODO XXX: update syncstate
+                                    TextInsert::deserialize(&buffer[4..bytes], &mut set, &backend_state_unpacked); //TODO XXX: update syncstate? cant do that, because then we'd have problems with synchronous cursor updates...
                                 },
                                 None => println!("Received data without being initialized first.")
                             }

@@ -975,6 +975,17 @@ void
 rust_blocking_sync_text (void *ffi_box_ptr);
 
 void
+send_new_cursor (TextBuffer *buffer, void *ffi_box_ptr)
+{
+    Uint8 separator[6] = {31, 0, 0, 0, 0, 0};
+    separator[1] = buffer->cursor&0xFF;
+    separator[2] = (buffer->cursor >> 8)&0xFF;
+    separator[3] = (buffer->cursor >> 16)&0xFF;
+    separator[4] = (buffer->cursor >> 24)&0xFF;
+    rust_text_input(separator, ffi_box_ptr);
+}
+
+void
 render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buffer, Uint32 cursor_ID, Uint8 cursor_charPos, DynamicArray_uint32 *ID_stack)
 //buffer.text needs to be initialized; buffer.ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character, buffer.charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
 {
@@ -1631,10 +1642,7 @@ int main (void)
                             }
 
                             buffer.activeInsertID = 0;
-                            {
-                                Uint8 separator[2] = {31, 0};
-                                rust_text_input(separator, ffi_box_ptr);
-                            }
+                            send_new_cursor(&buffer, ffi_box_ptr);
                         } break;
 
                         case SDLK_LEFT:
@@ -1658,10 +1666,7 @@ int main (void)
                             }
 
                             buffer.activeInsertID = 0;
-                            {
-                                Uint8 separator[2] = {31, 0};
-                                rust_text_input(separator, ffi_box_ptr);
-                            }
+                            send_new_cursor(&buffer, ffi_box_ptr);
                         } break;
 
                         case SDLK_UP:
@@ -1687,10 +1692,7 @@ int main (void)
 
                             buffer.cursor = i;
                             buffer.activeInsertID = 0;
-                            {
-                                Uint8 separator[2] = {31, 0};
-                                rust_text_input(separator, ffi_box_ptr);
-                            }
+                            send_new_cursor(&buffer, ffi_box_ptr);
                         } break;
 
                         case SDLK_DOWN:
@@ -1701,10 +1703,7 @@ int main (void)
                             for (i=buffer.cursor; (i < buffer.text.length-1) && (buffer.text.array[i] != 10); i++);
                             buffer.cursor = i+1;
                             buffer.activeInsertID = 0;
-                            {
-                                Uint8 separator[2] = {31, 0};
-                                rust_text_input(separator, ffi_box_ptr);
-                            }
+                            send_new_cursor(&buffer, ffi_box_ptr);
                         } break;
 
                         case SDLK_v:
