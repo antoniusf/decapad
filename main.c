@@ -975,6 +975,9 @@ void
 rust_blocking_sync_text (void *ffi_box_ptr);
 
 void
+rust_sync_unlock (void *ffi_box_ptr);
+
+void
 send_new_cursor (TextBuffer *buffer, void *ffi_box_ptr)
 {
     Uint8 separator[6] = {31, 0, 0, 0, 0, 0};
@@ -1643,6 +1646,7 @@ int main (void)
 
                             buffer.activeInsertID = 0;
                             send_new_cursor(&buffer, ffi_box_ptr);
+                            rust_sync_unlock(ffi_box_ptr);
                         } break;
 
                         case SDLK_LEFT:
@@ -1667,6 +1671,7 @@ int main (void)
 
                             buffer.activeInsertID = 0;
                             send_new_cursor(&buffer, ffi_box_ptr);
+                            rust_sync_unlock(ffi_box_ptr);
                         } break;
 
                         case SDLK_UP:
@@ -1693,6 +1698,7 @@ int main (void)
                             buffer.cursor = i;
                             buffer.activeInsertID = 0;
                             send_new_cursor(&buffer, ffi_box_ptr);
+                            rust_sync_unlock(ffi_box_ptr);
                         } break;
 
                         case SDLK_DOWN:
@@ -1704,6 +1710,7 @@ int main (void)
                             buffer.cursor = i+1;
                             buffer.activeInsertID = 0;
                             send_new_cursor(&buffer, ffi_box_ptr);
+                            rust_sync_unlock(ffi_box_ptr);
                         } break;
 
                         case SDLK_v:
@@ -1993,8 +2000,8 @@ int main (void)
         resend_timer += 30;
         SDL_Delay(30);//TODO: how big should the delay be?
 
-        //TEST
         rust_try_sync_text(ffi_box_ptr);
+        rust_sync_unlock(ffi_box_ptr);
 
     }
 

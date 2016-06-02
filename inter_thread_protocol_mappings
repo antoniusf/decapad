@@ -1,0 +1,22 @@
+Messages (UTF-8 encoded):
+
+    input:
+        everything except ASCII control characters, but with DEL (127) for deletion
+
+    cursor:
+        ASCII unit separator (US: 31), followed by four bytes of unsigned cursor position in little endian order
+
+    unlock:
+        ASCII Start of Text (STX: 2)
+
+    sync begin:
+        ASCII Synchronous Idle (SYN: 22)
+
+    sync ready:
+        character 'r'
+
+    sync success:
+        character 's'
+
+    sync fail:
+        character 'f'
