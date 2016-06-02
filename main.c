@@ -963,7 +963,7 @@ quicksort (unsigned long *array, unsigned long min, unsigned long max)
 }
 
 extern void *
-start_backend (Uint16 own_port, Uint16 other_port, Uint8 *sync_bit, TextBuffer *textbuffer_ptr);
+start_backend (Uint16 own_port, Uint16 other_port, TextBuffer *textbuffer_ptr);
 
 void
 rust_text_input (const Uint8 *text, void *ffi_box_ptr);
@@ -1506,8 +1506,7 @@ int main (void)
 
 
     //Start rust backend
-    Uint8 sync_bit = 0;
-    void *ffi_box_ptr = start_backend(2001, 2002, &sync_bit, &buffer);
+    void *ffi_box_ptr = start_backend(2001, 2002, &buffer);
 
 
     //main loop

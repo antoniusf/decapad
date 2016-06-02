@@ -327,7 +327,6 @@ pub struct TextBuffer
 pub struct ThreadPointerWrapper
 {
     text_buffer: *mut TextBuffer,
-    sync_bit: *mut u8
 }
 
 unsafe impl Send for ThreadPointerWrapper {}
@@ -477,12 +476,12 @@ unsafe fn expandDynamicArray_uint32 (array: &mut DynamicArray_uint32, new_length
 }
 
 #[no_mangle]
-pub unsafe extern fn start_backend (own_port: u16, other_port: u16, sync_bit: *mut u8, textbuffer_ptr: *mut TextBuffer) -> *mut FFIData
+pub unsafe extern fn start_backend (own_port: u16, other_port: u16, textbuffer_ptr: *mut TextBuffer) -> *mut FFIData
 {
-    start_backend_safe(own_port, other_port, sync_bit, textbuffer_ptr)
+    start_backend_safe(own_port, other_port, textbuffer_ptr)
 }
 
-fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text_buffer_ptr: *mut TextBuffer) -> *mut FFIData
+fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut TextBuffer) -> *mut FFIData
 {
 	
 	let (input_sender, input_receiver): (Producer, Consumer) = spsc_255::new();
@@ -492,7 +491,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
     let is_buffer_synchronized_clone = is_buffer_synchronized.clone();
     let is_buffer_locked_clone = is_buffer_locked.clone();
 
-    let c_pointers = ThreadPointerWrapper { text_buffer: c_text_buffer_ptr, sync_bit: sync_bit };
+    let c_pointers = ThreadPointerWrapper { text_buffer: c_text_buffer_ptr };
 
     let mut syncstate = BackendSyncstate::synced;
     let (sender, syncstate_receiver) = spsc_255::new();
