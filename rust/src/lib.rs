@@ -333,7 +333,13 @@ pub struct ThreadPointerWrapper
 unsafe impl Send for ThreadPointerWrapper {}
 
 
-pub type FFIData = *mut (Producer, OneThreadTent, Arc<AtomicBool>, Arc<AtomicBool>); //TODO: struct
+pub struct FFIData
+{
+    sender: Producer,
+    tent: OneThreadTent,
+    is_buffer_synchronized: Arc<AtomicBool>,
+    is_buffer_locked: Arc<AtomicBool>
+}
 
 
 fn render_text(set: &TextInsertSet, text_buffer: &mut TextBufferInternal)
@@ -454,12 +460,12 @@ unsafe fn expandDynamicArray_uint32 (array: &mut DynamicArray_uint32, new_length
 }
 
 #[no_mangle]
-pub unsafe extern fn start_backend (own_port: u16, other_port: u16, sync_bit: *mut u8, textbuffer_ptr: *mut TextBuffer) -> FFIData
+pub unsafe extern fn start_backend (own_port: u16, other_port: u16, sync_bit: *mut u8, textbuffer_ptr: *mut TextBuffer) -> *mut FFIData
 {
     start_backend_safe(own_port, other_port, sync_bit, textbuffer_ptr)
 }
 
-fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text_buffer_ptr: *mut TextBuffer) -> FFIData
+fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text_buffer_ptr: *mut TextBuffer) -> *mut FFIData
 {
 	
 	let (input_sender, input_receiver): (Producer, Consumer) = spsc_255::new();
@@ -678,7 +684,13 @@ fn start_backend_safe (own_port: u16, other_port: u16, sync_bit: *mut u8, c_text
 		}
 	}).expect("Could not start the backend thread. Good bye.");
 	
-	let return_box = Box::new((input_sender, other_thread_tent, is_buffer_synchronized_clone, is_buffer_locked_clone));
+    let return_box = Box::new( FFIData
+                                {
+                                    sender: input_sender,
+                                    tent: other_thread_tent,
+                                    is_buffer_synchronized: is_buffer_synchronized_clone,
+                                    is_buffer_locked: is_buffer_locked_clone
+                                });
 	return Box::into_raw(return_box);
 }
 
@@ -842,12 +854,11 @@ fn delete_character (position: usize, set: &mut TextInsertSet, network: &mut Net
 
 
 #[no_mangle]
-pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: FFIData)
+pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: *mut FFIData)
 {
-	let c_box = Box::from_raw(box_ptr);
+	let ffi = Box::from_raw(box_ptr);
 	{
-		let (ref sender, ref tent, ref is_buffer_synchronized, _) = *c_box;
-        is_buffer_synchronized.store(false, Ordering::Relaxed); //TODO: Ordering?
+        ffi.is_buffer_synchronized.store(false, Ordering::Relaxed); //TODO: Ordering?
 
 		let mut i = 0;
 		loop
@@ -858,16 +869,16 @@ pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: FFIData)
 			}
 			else
 			{
-				while sender.push(*text.offset(i)) == false
+				while ffi.sender.push(*text.offset(i)) == false
                 {
                     println!("rust_text_input says: keypress buffer has run full");
-                    tent.sleep();
+                    ffi.tent.sleep();
                 }
 			}
             i += 1;
 		}
 	}
-	mem::forget(c_box);
+	mem::forget(ffi);
 }
 
 fn rust_try_sync_text_internal (tent: &OneThreadTent, is_buffer_locked: &Arc<AtomicBool>)
@@ -883,26 +894,24 @@ fn rust_try_sync_text_internal (tent: &OneThreadTent, is_buffer_locked: &Arc<Ato
 }
 
 #[no_mangle]
-pub unsafe extern fn rust_try_sync_text (ffi_data: FFIData)
+pub unsafe extern fn rust_try_sync_text (ffi_data: *mut FFIData)
 {
-    let ffi_box = Box::from_raw(ffi_data);
+    let ffi = Box::from_raw(ffi_data);
     {
-        let (_, ref tent, _, ref is_buffer_locked) = *ffi_box;
-        rust_try_sync_text_internal(tent, is_buffer_locked);
+        rust_try_sync_text_internal(&ffi.tent, &ffi.is_buffer_locked);
     }
-    mem::forget(ffi_box);
+    mem::forget(ffi);
 }
 
 #[no_mangle]
-pub unsafe extern fn rust_blocking_sync_text (ffi_data: FFIData)
+pub unsafe extern fn rust_blocking_sync_text (ffi_data: *mut FFIData)
 {
-    let ffi_box = Box::from_raw(ffi_data);
+    let ffi = Box::from_raw(ffi_data);
     {
-        let (_, ref tent, ref is_buffer_synchronized, ref is_buffer_locked) = *ffi_box;
-        while is_buffer_synchronized.load(Ordering::Acquire) == false //TODO: really busy wait here?
+        while ffi.is_buffer_synchronized.load(Ordering::Acquire) == false //TODO: really busy wait here?
         {
-            rust_try_sync_text_internal(tent, is_buffer_locked);
+            rust_try_sync_text_internal(&ffi.tent, &ffi.is_buffer_locked);
         }
     }
-    mem::forget(ffi_box);
+    mem::forget(ffi);
 }
