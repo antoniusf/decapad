@@ -1044,4 +1044,5 @@ pub unsafe extern fn rust_sync_unlock (ffi_data: *mut FFIData)
     {
         println!("Trying to unlock from non-unlock state. Nothing will happen.")
     }
+    mem::forget(ffi);
 }
