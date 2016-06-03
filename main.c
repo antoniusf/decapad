@@ -1482,6 +1482,7 @@ int main (void)
 #else
     void *ffi_box_ptr = start_backend(2001, 2002, &buffer);
 #endif
+    rust_sync_unlock(ffi_box_ptr);
 
 
     //main loop

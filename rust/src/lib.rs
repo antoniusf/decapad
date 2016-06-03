@@ -36,7 +36,7 @@ fn deserialize_u32 (buffer: &[u8]) -> u32
         panic!("deserialize_u32 needs a slice that is at least 4 bytes long, but it got only {}.", buffer.len());
     }
 
-    let result = (buffer[0] as u32)<<24 + (buffer[1] as u32)<<16 + (buffer[2] as u32)<<8 + (buffer[3] as u32);
+    let result = ((buffer[0] as u32)<<24) + ((buffer[1] as u32)<<16) + ((buffer[2] as u32)<<8) + (buffer[3] as u32);
     return result;
 }
 
@@ -533,6 +533,8 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 		const BUFFER_LENGTH: usize = 10000;
 		let mut buffer = [0u8; BUFFER_LENGTH];
 
+
+
 		loop
 		{
 			//check network
@@ -616,101 +618,101 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
                 if new_text_raw.len() > 0
                 {
-                    match backend_state
+                    let new_text = str::from_utf8(&new_text_raw[..]).expect("Got invalid UTF-8 from SDL!");
+
+                    println!("Received text!");
+                    for character in new_text.chars()
                     {
-                        None => println!("Got some keypresses, but weren't initialized."),
-                        
-                        Some(ref mut inner_backend_state) =>
+                        if character == 127 as char
                         {
-
-                            let new_text = str::from_utf8(&new_text_raw[..]).expect("Got invalid UTF-8 from SDL!");
-
-                            println!("Received text!");
-                            for character in new_text.chars()
+                            match syncstate
                             {
-                                if character == 127 as char
+                                BackendSyncstate::lockedsync => panic!("Can't insert or delete in lockedsync mode"),
+                                BackendSyncstate::waiting => syncstate = BackendSyncstate::unsynced,
+                                _ => ()
+                            }
+
+                            if new_text.len() > 1
+                            {
+                                render_text(&set, &mut text_buffer); //make sure we get the correct cursor position for deleting...
+                            }
+                            if text_buffer.cursor_globalPos > 0
+                            {
+                                text_buffer.cursor_globalPos -= 1;
+                                delete_character(text_buffer.cursor_globalPos, &mut set, &mut network, &mut text_buffer);
+                                text_buffer.needs_updating = true;
+
+                                text_buffer.active_insert = None;
+                                text_buffer.cursor_ID = None; //TODO: add sorting inserts by timestamp + ID (render_text), enable setting cursor_ID and charPos here
+                                text_buffer.cursor_charPos = None;
+                            }
+                        }
+
+                        else if character == 31 as char //ASCII unit separator: sent to indicate that the previous stream of text is terminated and cursor position must be updated
+                        {
+                            assert!(syncstate == BackendSyncstate::lockedsync, "Tried to update cursor position (ASCII 31) while not synchronized!");
+                            let mut new_cursor_pos: usize = input_receiver.blocking_pop() as usize;
+                            new_cursor_pos += (input_receiver.blocking_pop() as usize)<<8;
+                            new_cursor_pos += (input_receiver.blocking_pop() as usize)<<16;
+                            new_cursor_pos += (input_receiver.blocking_pop() as usize)<<24;
+
+                            assert!(new_cursor_pos <= text_buffer.text.len());
+                            text_buffer.cursor_globalPos = new_cursor_pos;
+
+                            text_buffer.active_insert = None;
+                            text_buffer.cursor_ID = None;
+                            text_buffer.cursor_charPos = None;
+                        }
+
+                        else if character == 22 as char //ASCII 'SYN'
+                        {
+                            match syncstate
+                            {
+                                BackendSyncstate::lockedsync => panic!("Can't sync while in lockedsync mode"),
+                                BackendSyncstate::unsynced => assert!(sender.push('f' as u8), "Backend sender queue overflowed"),
+                                BackendSyncstate::waiting =>
                                 {
-                                    match syncstate
+                                    unsafe
                                     {
-                                        BackendSyncstate::lockedsync => panic!("Can't insert or delete in lockedsync mode"),
-                                        BackendSyncstate::waiting => syncstate = BackendSyncstate::unsynced,
-                                        _ => ()
-                                    }
+                                        assert!(input_receiver.len() == 0);
+                                        assert!(is_buffer_locked.load(Ordering::Acquire) == true);
 
-                                    if new_text.len() > 1
-                                    {
-                                        render_text(&set, &mut text_buffer); //make sure we get the correct cursor position for deleting...
-                                    }
-                                    if text_buffer.cursor_globalPos > 0
-                                    {
-                                        text_buffer.cursor_globalPos -= 1;
-                                        delete_character(text_buffer.cursor_globalPos, &mut set, &mut network, &mut text_buffer);
-                                        text_buffer.needs_updating = true;
-
-                                        text_buffer.active_insert = None;
-                                        text_buffer.cursor_ID = None; //TODO: add sorting inserts by timestamp + ID (render_text), enable setting cursor_ID and charPos here
-                                        text_buffer.cursor_charPos = None;
-                                    }
-                                }
-
-                                else if character == 31 as char //ASCII unit separator: sent to indicate that the previous stream of text is terminated and cursor position must be updated
-                                {
-                                    assert!(syncstate == BackendSyncstate::lockedsync, "Tried to update cursor position (ASCII 31) while not synchronized!");
-                                    let mut new_cursor_pos: usize = input_receiver.blocking_pop() as usize;
-                                    new_cursor_pos += (input_receiver.blocking_pop() as usize)<<8;
-                                    new_cursor_pos += (input_receiver.blocking_pop() as usize)<<16;
-                                    new_cursor_pos += (input_receiver.blocking_pop() as usize)<<24;
-
-                                    assert!(new_cursor_pos <= text_buffer.text.len());
-                                    text_buffer.cursor_globalPos = new_cursor_pos;
-
-                                    text_buffer.active_insert = None;
-                                    text_buffer.cursor_ID = None;
-                                    text_buffer.cursor_charPos = None;
-                                }
-
-                                else if character == 22 as char //ASCII 'SYN'
-                                {
-                                    match syncstate
-                                    {
-                                        BackendSyncstate::lockedsync => panic!("Can't sync while in lockedsync mode"),
-                                        BackendSyncstate::unsynced => assert!(sender.push('f' as u8), "Backend sender queue overflowed"),
-                                        BackendSyncstate::waiting =>
+                                        let mut c_text_buffer = &mut *c_pointers.text_buffer;
+                                        c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
+                                        c_text_buffer.ahead_cursor = c_text_buffer.cursor;
+                                        expandDynamicArray_uint32(&mut c_text_buffer.text, text_buffer.text.len());
+                                        c_text_buffer.text.length = text_buffer.text.len() as c_long;
+                                        for (offset, character) in text_buffer.text.iter().enumerate()
                                         {
-                                            unsafe
-                                            {
-                                                assert!(input_receiver.len() == 0);
-                                                assert!(is_buffer_locked.load(Ordering::Acquire) == true);
-
-                                                let mut c_text_buffer = &mut *c_pointers.text_buffer;
-                                                c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
-                                                c_text_buffer.ahead_cursor = c_text_buffer.cursor;
-                                                expandDynamicArray_uint32(&mut c_text_buffer.text, text_buffer.text.len());
-                                                c_text_buffer.text.length = text_buffer.text.len() as c_long;
-                                                for (offset, character) in text_buffer.text.iter().enumerate()
-                                                {
-                                                    *c_text_buffer.text.array.offset(offset as isize) = *character as u32;
-                                                }
-                                            }
-                                            is_buffer_locked.store(false, Ordering::Release);
-                                        },
-                                        _ => ()
+                                            *c_text_buffer.text.array.offset(offset as isize) = *character as u32;
+                                        }
                                     }
-                                }
+                                    is_buffer_locked.store(false, Ordering::Release);
+                                },
+                                _ => ()
+                            }
+                        }
 
-                                else if character == 2 as char //ASCII 'STX'
-                                {
-                                    if syncstate == BackendSyncstate::lockedsync
-                                    {
-                                        syncstate = BackendSyncstate::unsynced;
-                                    }
-                                    else
-                                    {
-                                        panic!("Trying to unlock from other than lockedsync mode");
-                                    }
-                                }
+                        else if character == 2 as char //ASCII 'STX'
+                        {
+                            if syncstate == BackendSyncstate::lockedsync
+                            {
+                                println!("unlocked!");
+                                syncstate = BackendSyncstate::unsynced;
+                            }
+                            else
+                            {
+                                panic!("Trying to unlock from other than lockedsync mode");
+                            }
+                        }
 
-                                else
+                        else
+                        {
+                            match backend_state
+                            {
+                                None => println!("Got some keypresses, but weren't initialized."), //TODO: find better solution
+                                
+                                Some(ref mut inner_backend_state) =>
                                 {
                                     match syncstate
                                     {
@@ -723,21 +725,26 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                     text_buffer.needs_updating = true;
                                 }
                             }
-
-
-                            if (text_buffer.needs_updating) & (syncstate == BackendSyncstate::unsynced)
-                            {
-                                render_text(&set, &mut text_buffer);//TODO: initialize with correct cursor position
-                                assert!(sender.push('r' as u8) == true);
-                                syncstate = BackendSyncstate::waiting;
-
-                                println!("Newly rendered text: {:?}", &text_buffer.text);
-                                println!("Data: {:?}", &set);
-                            }
                         }
+                    }
+
+
+                    if (text_buffer.needs_updating) & (syncstate == BackendSyncstate::unsynced)
+                    {
+                        render_text(&set, &mut text_buffer);//TODO: initialize with correct cursor position
+                        assert!(sender.push('r' as u8) == true);
+                        syncstate = BackendSyncstate::waiting;
+
+                        println!("Newly rendered text: {:?}", &text_buffer.text);
+                        println!("Data: {:?}", &set);
                     }
                 }
 			}
+
+            if backend_state.is_none() & (own_port < other_port)
+            {
+                network.send("inrq".as_bytes()); //retry init
+            }
 		}
 	}).expect("Could not start the backend thread. Good bye.");
 	
@@ -1039,10 +1046,11 @@ pub unsafe extern fn rust_sync_unlock (ffi_data: *mut FFIData)
     {
         while !ffi.sender.push(2) {} //ASCII 'STX'
         ffi.state = FrontendSyncstate::unsynced;
+        println!("sent unlock.");
     }
     else
     {
-        println!("Trying to unlock from non-unlock state. Nothing will happen.")
+        //println!("Trying to unlock from non-unlock state. Nothing will happen.")
     }
     mem::forget(ffi);
 }
