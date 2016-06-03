@@ -1808,6 +1808,10 @@ int main (void)
             }
         }
 
+        if ((click_x != -1) || (click_y != -1))
+        {
+            rust_blocking_sync_text(ffi_box_ptr);
+        }
         if (blink_timer < 128)
         {
             draw_text(&buffer, buffer.text.array, pixels, 1, fontface, click_x, click_y);
@@ -1816,7 +1820,13 @@ int main (void)
         {
             draw_text(&buffer, buffer.text.array, pixels, 0, fontface, click_x, click_y);
         }
-        click_x = click_y = -1;
+        buffer.ahead_cursor = buffer.cursor;
+        if ((click_x != -1) || (click_y != -1))
+        {
+            rust_send_cursor(buffer.cursor, ffi_box_ptr);
+            rust_sync_unlock(ffi_box_ptr);
+            click_x = click_y = -1;
+        }
 
         //SDL_UpdateTexture(texture, NULL, pixels, window_width*sizeof(Uint32));
         SDL_UnlockTexture(texture);
