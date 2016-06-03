@@ -51,6 +51,7 @@ pub mod spsc_255
             {
                 self.queue.buffer[push_index as usize].set(item);
                 self.queue.push_index.store(push_index.wrapping_add(1) as usize, Ordering::Release);
+                println!("pushing {}.", item);
                 return true;
             }
             else
@@ -71,6 +72,21 @@ pub mod spsc_255
             {
                 let value = self.queue.buffer[pop_index as usize].get();
                 self.queue.pop_index.store(pop_index.wrapping_add(1) as usize, Ordering::Release);
+                println!("popping {}.", value);
+                return Some(value);
+            }
+            else
+            {
+                return None;
+            }
+        }
+
+        pub fn peek (&self) -> Option<u8>
+        {
+            let peek_index: u8 = self.queue.pop_index.load(Ordering::Relaxed) as u8;
+            if peek_index != self.queue.push_index.load(Ordering::Acquire) as u8
+            {
+                let value = self.queue.buffer[peek_index as usize].get();
                 return Some(value);
             }
             else
