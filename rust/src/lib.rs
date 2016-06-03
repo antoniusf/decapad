@@ -653,10 +653,31 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                         else if character == 31 as char //ASCII unit separator: sent to indicate that the previous stream of text is terminated and cursor position must be updated
                         {
                             assert!(syncstate == BackendSyncstate::lockedsync, "Tried to update cursor position (ASCII 31) while not synchronized!");
-                            let mut new_cursor_pos: usize = (text_iter.next().unwrap() as u8) as usize;
-                            new_cursor_pos += ( (text_iter.next().unwrap() as u8) as usize)<<8;
-                            new_cursor_pos += ( (text_iter.next().unwrap() as u8) as usize)<<16;
-                            new_cursor_pos += ( (text_iter.next().unwrap() as u8) as usize)<<24;
+                            let mut new_cursor_pos: usize = 0;
+
+                            let byte =
+                                if let Some(byte) = text_iter.next() { (byte as u8) as usize }
+                                else { input_receiver.blocking_pop() as usize };
+
+                            new_cursor_pos = byte;
+
+                            let byte =
+                                if let Some(byte) = text_iter.next() { (byte as u8) as usize }
+                                else { input_receiver.blocking_pop() as usize };
+
+                            new_cursor_pos += byte<<8;
+
+                            let byte =
+                                if let Some(byte) = text_iter.next() { (byte as u8) as usize }
+                                else { input_receiver.blocking_pop() as usize };
+
+                            new_cursor_pos += byte<<16;
+
+                            let byte =
+                                if let Some(byte) = text_iter.next() { (byte as u8) as usize }
+                                else { input_receiver.blocking_pop() as usize };
+
+                            new_cursor_pos += byte<<32;
 
                             assert!(new_cursor_pos <= text_buffer.text.len());
                             println!("new cursor position: {}", new_cursor_pos);
