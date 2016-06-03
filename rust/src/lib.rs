@@ -731,17 +731,18 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                     }
 
 
-                    if (text_buffer.needs_updating) & (syncstate == BackendSyncstate::unsynced)
-                    {
-                        render_text(&set, &mut text_buffer);//TODO: initialize with correct cursor position
-                        assert!(sender.push('r' as u8) == true);
-                        syncstate = BackendSyncstate::waiting;
-
-                        println!("Newly rendered text: {:?}", &text_buffer.text);
-                        println!("Data: {:?}", &set);
-                    }
                 }
 			}
+
+            if (text_buffer.needs_updating) & (syncstate == BackendSyncstate::unsynced)
+            {
+                render_text(&set, &mut text_buffer);//TODO: initialize with correct cursor position
+                assert!(sender.push('r' as u8) == true);
+                syncstate = BackendSyncstate::waiting;
+
+                println!("Newly rendered text: {:?}", &text_buffer.text);
+                println!("Data: {:?}", &set);
+            }
 
             if backend_state.is_none() & (own_port < other_port)
             {
