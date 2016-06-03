@@ -1599,6 +1599,7 @@ int main (void)
                             }
 
                             buffer.activeInsertID = 0;
+                            buffer.ahead_cursor = buffer.cursor;
                             rust_send_cursor(buffer.cursor, ffi_box_ptr);
                             rust_sync_unlock(ffi_box_ptr);
                         } break;
@@ -1623,6 +1624,7 @@ int main (void)
                                 }
                             }
 
+                            buffer.ahead_cursor = buffer.cursor;
                             buffer.activeInsertID = 0;
                             rust_send_cursor(buffer.cursor, ffi_box_ptr);
                             rust_sync_unlock(ffi_box_ptr);
@@ -1650,6 +1652,7 @@ int main (void)
                             }
 
                             buffer.cursor = i;
+                            buffer.ahead_cursor = buffer.cursor;
                             buffer.activeInsertID = 0;
                             rust_send_cursor(buffer.cursor, ffi_box_ptr);
                             rust_sync_unlock(ffi_box_ptr);
@@ -1662,6 +1665,7 @@ int main (void)
                             int i;
                             for (i=buffer.cursor; (i < buffer.text.length-1) && (buffer.text.array[i] != 10); i++);
                             buffer.cursor = i+1;
+                            buffer.ahead_cursor = buffer.cursor;
                             buffer.activeInsertID = 0;
                             rust_send_cursor(buffer.cursor, ffi_box_ptr);
                             rust_sync_unlock(ffi_box_ptr);
