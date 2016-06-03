@@ -168,10 +168,10 @@ impl TextInsert
 
                         if content.len() >= old_insert.content.len() //TODO: assume this is an update for now, actually we would need authenticity checking (and copying over 127s?)
                         {
-                            old_insert.ID = ID;
-                            old_insert.parent = parent;
-                            old_insert.author = author;
-                            old_insert.charPos = charPos;
+                            //old_insert.ID = ID;
+                            //old_insert.parent = parent;
+                            //old_insert.author = author;
+                            //old_insert.charPos = charPos;
                             old_insert.content = content;
                         }
                         else
@@ -388,12 +388,9 @@ fn render_text(set: &TextInsertSet, text_buffer: &mut TextBufferInternal)
 
     render_text_internal(&set, 0, 0, &mut *text_buffer, &mut ID_stack);
 
-    if let Some(cursor_ID) = text_buffer.cursor_ID
+    if text_buffer.cursor_ID.unwrap() == 0 //edge case
     {
-        if cursor_ID == 0 //edge case
-        {
-            text_buffer.cursor_globalPos = 0;
-        }
+        text_buffer.cursor_globalPos = 0;
     }
 
     if temp_cursor_ID
@@ -586,7 +583,8 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                             {
                                 Some(ref backend_state_unpacked) =>
                                 {
-                                    TextInsert::deserialize(&buffer[4..bytes], &mut set, &backend_state_unpacked); //TODO XXX: update syncstate? cant do that, because then we'd have problems with synchronous cursor updates...
+                                    TextInsert::deserialize(&buffer[4..bytes], &mut set, &backend_state_unpacked);
+                                    text_buffer.needs_updating = true;
                                 },
                                 None => println!("Received data without being initialized first.")
                             }
