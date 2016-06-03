@@ -1671,35 +1671,38 @@ int main (void)
                             rust_sync_unlock(ffi_box_ptr);
                         } break;
 
-                        //case SDLK_v:
-                        //{
-                        //    if (e.key.keysym.mod & KMOD_CTRL)
-                        //    {
-                        //        char *clipboard_content = SDL_GetClipboardText();
-                        //        if (clipboard_content)
-                        //        {
-                        //            DynamicArray_uint32 utf32_encoded;
-                        //            initDynamicArray_uint32(&utf32_encoded);
-                        //            utf8_to_utf32(clipboard_content, &utf32_encoded);
-                        //            if (program_state == STATE_PAD)
-                        //            {
-                        //                for (i=0; i<utf32_encoded.length; i++)
-                        //                {
-                        //                    insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
-                        //                }
-                        //            }
-                        //            else if (program_state == STATE_LOGIN)
-                        //            {
-                        //                for (i=0; i<utf32_encoded.length; i++)
-                        //                {
-                        //                    login_insert_letter(&buffer, &username, &password, &pad_with, utf32_encoded.array[i]);
-                        //                }
-                        //            }
+                        case SDLK_v:
+                        {
+                            if (e.key.keysym.mod & KMOD_CTRL)
+                            {
+                                char *clipboard_content = SDL_GetClipboardText();
+                                if (clipboard_content)
+                                {
+                                    DynamicArray_uint32 utf32_encoded;
+                                    initDynamicArray_uint32(&utf32_encoded);
+                                    utf8_to_utf32(clipboard_content, &utf32_encoded);
+                                    if (program_state == STATE_PAD)
+                                    {
+                                        for (i=0; i<utf32_encoded.length; i++)
+                                        {
+                                            ahead_insert_letter(&buffer, utf32_encoded.array[i]);
+                                            buffer.ahead_cursor++;
+                                        }
+                                        blink_timer = 0;
+                                        rust_text_input(clipboard_content, get_string_length(clipboard_content), ffi_box_ptr);
+                                    }
+                                    else if (program_state == STATE_LOGIN)
+                                    {
+                                        for (i=0; i<utf32_encoded.length; i++)
+                                        {
+                                            login_insert_letter(&buffer, &username, &password, &pad_with, utf32_encoded.array[i]);
+                                        }
+                                    }
 
-                        //            free(clipboard_content);
-                        //        }
-                        //    }
-                        //} break;
+                                    free(clipboard_content);
+                                }
+                            }
+                        } break;
 
                         case SDLK_ESCAPE:
                         {
