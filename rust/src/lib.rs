@@ -114,18 +114,19 @@ impl TextInsert
         serialize_u32(self.ID, buffer);
         serialize_u32(self.parent, buffer);
         serialize_u32(self.author, buffer);
-        serialize_u32((self.charPos as u32)<<16 + (content_string.len() as u16), buffer);//NOTE: the u16 is necessary here because while character is one element of our content vector, it can be more than one byte in the utf-8 string (but not more than 255, which is why u16 should be sufficient).
+        serialize_u32(((self.charPos as u32)<<16) + (content_string.len() & 0xFFFF) as u32, buffer);//NOTE: the u16 is necessary here because while character is one element of our content vector, it can be more than one byte in the utf-8 string (but not more than 255, which is why u16 should be sufficient).
         buffer.extend_from_slice(content_string.as_bytes());
     }
 
-    fn send(&self, network: NetworkState)
+    fn send(&self, network: &mut NetworkState)
     {
-        let mut buffer: Vec<u8> = Vec::with_capacity(16+self.content.len());
+        let mut buffer: Vec<u8> = Vec::with_capacity(20+self.content.len());
+        buffer.extend_from_slice("data".as_bytes());
         self.serialize(&mut buffer);
         network.send(&buffer[..]);
     }
 
-    fn deserialize (buffer: &[u8], set: &mut TextInsertSet, backend_state: &ProtocolBackendState) -> Option<usize>
+    fn deserialize (buffer: &[u8], set: &mut TextInsertSet, backend_state: &ProtocolBackendState) -> Option<(usize, u32)>
     {
         if buffer.len() < 16
         {
@@ -218,7 +219,7 @@ impl TextInsert
                 return None;
             }
         }
-        return Some(16 + length);
+        return Some((16 + length, ID));
     }
 
 
@@ -289,6 +290,24 @@ impl NetworkState
             self.send_queue.push_back(ID);
         }
     }
+
+    fn resend_next_insert(&mut self, set: &TextInsertSet)
+    {
+        if let Some(ID) = self.send_queue.pop_front()
+        {
+            if let Some(insert) = get_insert_by_ID(ID, set)
+            {
+                self.send_queue.push_back(ID);
+                insert.send(self);
+            }
+            else
+            {
+                println!("Warning: the insert send queue contained an unknown insert ID.");
+            }
+        }
+    }
+
+
 }
 
 #[repr(C)]
@@ -577,14 +596,26 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                             }
                         }
 
-                        else if "data".as_bytes() == &buffer[0..4]
+                        else if "data".as_bytes() == &buffer[0..4] //TODO: check checksum...
                         {
+                            println!("Received insert.");
                             match backend_state
                             {
                                 Some(ref backend_state_unpacked) =>
                                 {
-                                    TextInsert::deserialize(&buffer[4..bytes], &mut set, &backend_state_unpacked);
-                                    text_buffer.needs_updating = true;
+                                    match TextInsert::deserialize(&buffer[4..bytes], &mut set, &backend_state_unpacked)
+                                    {
+                                        Some((insert_data_length, insert_ID)) =>
+                                        {
+                                            text_buffer.needs_updating = true;
+                                            let mut ack_buffer = Vec::with_capacity(8);
+                                            ack_buffer.extend_from_slice("ack ".as_bytes());
+                                            serialize_u32(insert_ID, &mut ack_buffer);
+                                            network.send(&ack_buffer[..]);
+                                            println!("Deserialized insert.");
+                                        },
+                                        None => ()
+                                    }
                                 },
                                 None => println!("Received data without being initialized first.")
                             }
@@ -605,6 +636,9 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                 },
 				Err(_) => ()
 			}
+
+            //resend un-ACKed inserts
+            network.resend_next_insert(&set);
 			
 			//check input queue
 			{
@@ -737,7 +771,6 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                         {
                             if syncstate == BackendSyncstate::lockedsync
                             {
-                                println!("unlocked!");
                                 syncstate = BackendSyncstate::unsynced;
                             }
                             else
@@ -1122,7 +1155,6 @@ pub unsafe extern fn rust_sync_unlock (ffi_data: *mut FFIData)
     {
         while !ffi.sender.push(2) {} //ASCII 'STX'
         ffi.state = FrontendSyncstate::unsynced;
-        println!("sent unlock.");
     }
     else
     {
