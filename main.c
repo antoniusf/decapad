@@ -1394,49 +1394,6 @@ int main (void)
     author_ID = ID_start = 1;
     ID_end = 1024;
 
-    network_data network;
-    network.wait_for_init = 0;
-    network.send_now = 0;
-    initDynamicArray_uint32(&network.send_queue);
-
-    network.own_socket = socket(AF_UNIX, SOCK_DGRAM|SOCK_NONBLOCK, 0);
-
-    if (network.own_socket == -1)
-    {
-        printf("Failed to create socket.\n");
-        return 1;
-    }
-
-    if (access("/tmp/deca_socket_1", F_OK) == -1)
-    {
-
-        const struct sockaddr_un own_address = { .sun_family = AF_UNIX, .sun_path = "/tmp/deca_socket_1" };
-        error = bind(network.own_socket, (const struct sockaddr *) &own_address, sizeof(own_address));
-        if (error == -1)
-        {
-            printf("Failed to bind socket.\n");
-            return 1;
-        }
-
-
-    }
-
-    else
-    {
-        const struct sockaddr_un own_address = { .sun_family = AF_UNIX, .sun_path = "/tmp/deca_socket_2" };
-        error = bind(network.own_socket, (const struct sockaddr *) &own_address, sizeof(own_address));
-        if (error == -1)
-        {
-            printf("Failed to bind socket.\n");
-            return 1;
-        }
-
-        const struct sockaddr_un other_address = { .sun_family = AF_UNIX, .sun_path = "/tmp/deca_socket_1" };
-        connect(network.own_socket, (const struct sockaddr *) &other_address, sizeof(other_address));
-
-        send_init_request(&network);
-        network.wait_for_init = 1;
-    }
     
     //Freetype setup
     
@@ -1520,7 +1477,11 @@ int main (void)
 
 
     //Start rust backend
+#ifdef SWITCH
+    void *ffi_box_ptr = start_backend(2002, 2001, &buffer);
+#else
     void *ffi_box_ptr = start_backend(2001, 2002, &buffer);
+#endif
 
 
     //main loop
@@ -1713,35 +1674,35 @@ int main (void)
                             rust_sync_unlock(ffi_box_ptr);
                         } break;
 
-                        case SDLK_v:
-                        {
-                            if (e.key.keysym.mod & KMOD_CTRL)
-                            {
-                                char *clipboard_content = SDL_GetClipboardText();
-                                if (clipboard_content)
-                                {
-                                    DynamicArray_uint32 utf32_encoded;
-                                    initDynamicArray_uint32(&utf32_encoded);
-                                    utf8_to_utf32(clipboard_content, &utf32_encoded);
-                                    if (program_state == STATE_PAD)
-                                    {
-                                        for (i=0; i<utf32_encoded.length; i++)
-                                        {
-                                            insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
-                                        }
-                                    }
-                                    else if (program_state == STATE_LOGIN)
-                                    {
-                                        for (i=0; i<utf32_encoded.length; i++)
-                                        {
-                                            login_insert_letter(&buffer, &username, &password, &pad_with, utf32_encoded.array[i]);
-                                        }
-                                    }
+                        //case SDLK_v:
+                        //{
+                        //    if (e.key.keysym.mod & KMOD_CTRL)
+                        //    {
+                        //        char *clipboard_content = SDL_GetClipboardText();
+                        //        if (clipboard_content)
+                        //        {
+                        //            DynamicArray_uint32 utf32_encoded;
+                        //            initDynamicArray_uint32(&utf32_encoded);
+                        //            utf8_to_utf32(clipboard_content, &utf32_encoded);
+                        //            if (program_state == STATE_PAD)
+                        //            {
+                        //                for (i=0; i<utf32_encoded.length; i++)
+                        //                {
+                        //                    insert_letter(&set, &buffer, utf32_encoded.array[i], &network);
+                        //                }
+                        //            }
+                        //            else if (program_state == STATE_LOGIN)
+                        //            {
+                        //                for (i=0; i<utf32_encoded.length; i++)
+                        //                {
+                        //                    login_insert_letter(&buffer, &username, &password, &pad_with, utf32_encoded.array[i]);
+                        //                }
+                        //            }
 
-                                    free(clipboard_content);
-                                }
-                            }
-                        } break;
+                        //            free(clipboard_content);
+                        //        }
+                        //    }
+                        //} break;
 
                         case SDLK_ESCAPE:
                         {
@@ -1869,131 +1830,131 @@ int main (void)
 
 
         //check FIFO
-        {
-            char *base85_length = malloc(5);
-            if (recv(network.own_socket, base85_length, 5, MSG_PEEK) == 5)
-            {
-                Uint32 length = base85_dec_uint32(base85_length);
+        //{
+        //    char *base85_length = malloc(5);
+        //    if (recv(network.own_socket, base85_length, 5, MSG_PEEK) == 5)
+        //    {
+        //        Uint32 length = base85_dec_uint32(base85_length);
 
-                char *input_unsliced = malloc(length+5);
-                ssize_t actual_length = recv(network.own_socket, input_unsliced, length+5, 0)-5;
-                if (actual_length != length)
-                {
-                    printf("Given message length and actual message length did not match. Message is not processed.\n");
-                }
-                else
-                {
-                    char *input = input_unsliced + 5;
+        //        char *input_unsliced = malloc(length+5);
+        //        ssize_t actual_length = recv(network.own_socket, input_unsliced, length+5, 0)-5;
+        //        if (actual_length != length)
+        //        {
+        //            printf("Given message length and actual message length did not match. Message is not processed.\n");
+        //        }
+        //        else
+        //        {
+        //            char *input = input_unsliced + 5;
 
-                    printf("Received message of length %i: %.*s\n", length, length, input);
+        //            printf("Received message of length %i: %.*s\n", length, length, input);
 
-                    if (string_compare(input, length, "Init", 4))
-                    {
-                        if (network.wait_for_init)
-                        {
-                            if (length == 4+5+5+2)
-                            {
-                                if (check_base32_crc8_0x97(input, length) == 0)
-                                {
-                                    author_ID = ID_start = base85_dec_uint32(input+4);
-                                    ID_end = base85_dec_uint32(input+9);
+        //            if (string_compare(input, length, "Init", 4))
+        //            {
+        //                if (network.wait_for_init)
+        //                {
+        //                    if (length == 4+5+5+2)
+        //                    {
+        //                        if (check_base32_crc8_0x97(input, length) == 0)
+        //                        {
+        //                            author_ID = ID_start = base85_dec_uint32(input+4);
+        //                            ID_end = base85_dec_uint32(input+9);
 
-                                    network.wait_for_init = 0;
-                                }
-                            }
+        //                            network.wait_for_init = 0;
+        //                        }
+        //                    }
 
-                            else
-                            {
-                                printf("Invalid data length!\n");
-                            }
+        //                    else
+        //                    {
+        //                        printf("Invalid data length!\n");
+        //                    }
 
-                        }
-                    }
+        //                }
+        //            }
 
-                    else if (string_compare(input, length, "deny", 4))
-                    {
-                        if (network.wait_for_init)
-                        {
-                            network.wait_for_init = 0;
-                        }
-                    }
+        //            else if (string_compare(input, length, "deny", 4))
+        //            {
+        //                if (network.wait_for_init)
+        //                {
+        //                    network.wait_for_init = 0;
+        //                }
+        //            }
 
-                    else if (string_compare(input, length, "inrq", 4))
-                    {
-                        const struct sockaddr_un other_address = { .sun_family = AF_UNIX, .sun_path = "/tmp/deca_socket_2" };
-                        connect(network.own_socket, (const struct sockaddr *) &other_address, sizeof(other_address));
-                        send_init(&network);
-                    }
+        //            else if (string_compare(input, length, "inrq", 4))
+        //            {
+        //                const struct sockaddr_un other_address = { .sun_family = AF_UNIX, .sun_path = "/tmp/deca_socket_2" };
+        //                connect(network.own_socket, (const struct sockaddr *) &other_address, sizeof(other_address));
+        //                send_init(&network);
+        //            }
 
-                    else if (string_compare(input, length, "data", 4))
-                    {
-                        if (check_base32_crc8_0x97(input, length) == 0)
-                        {
-                            size_t insert_length;
-                            Sint64 insert_ID = unserialize_insert(&set, input+4, length-4, &insert_length);
-                            update_buffer(&set, &buffer);
+        //            else if (string_compare(input, length, "data", 4))
+        //            {
+        //                if (check_base32_crc8_0x97(input, length) == 0)
+        //                {
+        //                    size_t insert_length;
+        //                    Sint64 insert_ID = unserialize_insert(&set, input+4, length-4, &insert_length);
+        //                    update_buffer(&set, &buffer);
 
-                            if(insert_ID >= 0)
-                            {
-                                //ACK
-                                char ack[14] = "*****ack *****";
-                                base85_enc_uint32(insert_ID, ack+9);
-                                send_data(ack, 14, &network);
-                            }
-                        }
-                    }
+        //                    if(insert_ID >= 0)
+        //                    {
+        //                        //ACK
+        //                        char ack[14] = "*****ack *****";
+        //                        base85_enc_uint32(insert_ID, ack+9);
+        //                        send_data(ack, 14, &network);
+        //                    }
+        //                }
+        //            }
 
-                    else if (string_compare(input, length, "ack ", 4))
-                    {
-                        if (length == 4+5)
-                        {
-                            int i;
-                            Uint32 ack_id = base85_dec_uint32(input+4);
-                            for (i=0; i < network.send_queue.length; i++)
-                            {
-                                if ( network.send_queue.array[i] == ack_id )
-                                {
-                                    deleteFromDynamicArray_uint32(&network.send_queue, i);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
+        //            else if (string_compare(input, length, "ack ", 4))
+        //            {
+        //                if (length == 4+5)
+        //                {
+        //                    int i;
+        //                    Uint32 ack_id = base85_dec_uint32(input+4);
+        //                    for (i=0; i < network.send_queue.length; i++)
+        //                    {
+        //                        if ( network.send_queue.array[i] == ack_id )
+        //                        {
+        //                            deleteFromDynamicArray_uint32(&network.send_queue, i);
+        //                            break;
+        //                        }
+        //                    }
+        //                }
+        //            }
+        //        }
 
-                free(input_unsliced);
-            }
-            free(base85_length);
+        //        free(input_unsliced);
+        //    }
+        //    free(base85_length);
 
-            //check whether we have to take back the cursor after a deletion
-            if (buffer.cursor > buffer.text.length)
-            {
-                buffer.cursor = buffer.text.length;
-            }
-        }
+        //    //check whether we have to take back the cursor after a deletion
+        //    if (buffer.cursor > buffer.text.length)
+        //    {
+        //        buffer.cursor = buffer.text.length;
+        //    }
+        //}
 
-        //resend un-ACKed inserts
-        if (resend_timer >= 500 || network.send_now)
-        {
-            resend_timer = 0;
-            network.send_now = 0;
+        ////resend un-ACKed inserts
+        //if (resend_timer >= 500 || network.send_now)
+        //{
+        //    resend_timer = 0;
+        //    network.send_now = 0;
 
-            if (network.send_queue.length > 0)
-            {
-                Uint32 insert_ID = network.send_queue.array[0];
-                TextInsert *resend_insert = set.array + getInsertByID(&set, insert_ID);
-                //printf("Resending insert %lu at %lu.\n", (long unsigned int) resend_insert->selfID, (long unsigned int) resend_insert);
-                send_insert(resend_insert, &network);
+        //    if (network.send_queue.length > 0)
+        //    {
+        //        Uint32 insert_ID = network.send_queue.array[0];
+        //        TextInsert *resend_insert = set.array + getInsertByID(&set, insert_ID);
+        //        //printf("Resending insert %lu at %lu.\n", (long unsigned int) resend_insert->selfID, (long unsigned int) resend_insert);
+        //        send_insert(resend_insert, &network);
 
-                deleteFromDynamicArray_uint32(&network.send_queue, 0);
-                addToDynamicArray_uint32(&network.send_queue, insert_ID);
-            }
+        //        deleteFromDynamicArray_uint32(&network.send_queue, 0);
+        //        addToDynamicArray_uint32(&network.send_queue, insert_ID);
+        //    }
 
-            if (network.wait_for_init)
-            {
-                send_init_request(&network);
-            }
-        }
+        //    if (network.wait_for_init)
+        //    {
+        //        send_init_request(&network);
+        //    }
+        //}
 
 
         blink_timer+=9;
@@ -2028,7 +1989,7 @@ int main (void)
 
     FT_Done_FreeType(ft_library);
 
-    close(network.own_socket);
+    //close(network.own_socket);
 
     return 0;
 }
