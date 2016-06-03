@@ -9,6 +9,9 @@ Messages (UTF-8 encoded):
     unlock:
         ASCII Start of Text (STX: 2)
 
+    sync request:
+        ASCII Enquiry (ENQ: 5)
+
     sync begin:
         ASCII Synchronous Idle (SYN: 22)
 
