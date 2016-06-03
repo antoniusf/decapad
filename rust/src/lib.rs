@@ -668,7 +668,13 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
                             if new_text.len() > 1
                             {
-                                render_text(&set, &mut text_buffer); //make sure we get the correct cursor position for deleting...
+                                if text_buffer.needs_updating
+                                {
+                                    render_text(&set, &mut text_buffer); //make sure we get the correct cursor position for deleting...
+                                    text_buffer.needs_updating = false;
+                                    assert!(sender.push('r' as u8));
+                                    syncstate = BackendSyncstate::waiting;
+                                }
                             }
                             if text_buffer.cursor_globalPos > 0
                             {
