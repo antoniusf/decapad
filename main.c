@@ -57,7 +57,7 @@ typedef struct network_data
     int send_now;
 } network_data;
 
-int
+Sint32
 get_string_length (char *buffer) //*not* counting the 0 at the end
 {
     int length = 0;
@@ -966,7 +966,7 @@ extern void *
 start_backend (Uint16 own_port, Uint16 other_port, TextBuffer *textbuffer_ptr);
 
 void
-rust_text_input (const Uint8 *text, void *ffi_box_ptr);
+rust_text_input (const Uint8 *text, Sint32 length, void *ffi_box_ptr);
 
 void
 rust_try_sync_text (void *ffi_box_ptr);
@@ -978,15 +978,7 @@ void
 rust_sync_unlock (void *ffi_box_ptr);
 
 void
-send_new_cursor (TextBuffer *buffer, void *ffi_box_ptr)
-{
-    Uint8 separator[6] = {31, 0, 0, 0, 0, 0};
-    separator[1] = buffer->cursor&0xFF;
-    separator[2] = (buffer->cursor >> 8)&0xFF;
-    separator[3] = (buffer->cursor >> 16)&0xFF;
-    separator[4] = (buffer->cursor >> 24)&0xFF;
-    rust_text_input(separator, ffi_box_ptr);
-}
+rust_send_cursor (Uint32 cursor, void *ffi_box_ptr);
 
 void
 render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buffer, Uint32 cursor_ID, Uint8 cursor_charPos, DynamicArray_uint32 *ID_stack)
@@ -1521,7 +1513,7 @@ int main (void)
                             buffer.ahead_cursor++;
                         }
                         blink_timer = 0;
-                        rust_text_input(e.text.text, ffi_box_ptr);
+                        rust_text_input(e.text.text, get_string_length(e.text.text), ffi_box_ptr);
                     }
                     else if (program_state == STATE_LOGIN)
                     {
@@ -1543,8 +1535,8 @@ int main (void)
                             {
                                 ahead_insert_letter(&buffer, 10);
                                 buffer.ahead_cursor++;
-                                Uint8 enter_data[2] = {10, 0};
-                                rust_text_input(enter_data, ffi_box_ptr);
+                                Uint8 enter = 10;
+                                rust_text_input(&enter, 1, ffi_box_ptr);
                             }
                             else if (program_state == STATE_LOGIN)
                             {
@@ -1573,8 +1565,8 @@ int main (void)
                                 {
                                     buffer.ahead_cursor--;
                                     ahead_delete_letter (&buffer);
-                                    Uint8 backspace_data[2] = {127, 0};
-                                    rust_text_input(backspace_data, ffi_box_ptr);
+                                    Uint8 backspace = 127;
+                                    rust_text_input(&backspace, 1, ffi_box_ptr);
                                 }
                                 else if (program_state == STATE_LOGIN)
                                 {
@@ -1607,7 +1599,7 @@ int main (void)
                             }
 
                             buffer.activeInsertID = 0;
-                            send_new_cursor(&buffer, ffi_box_ptr);
+                            rust_send_cursor(buffer.cursor, ffi_box_ptr);
                             rust_sync_unlock(ffi_box_ptr);
                         } break;
 
@@ -1632,7 +1624,7 @@ int main (void)
                             }
 
                             buffer.activeInsertID = 0;
-                            send_new_cursor(&buffer, ffi_box_ptr);
+                            rust_send_cursor(buffer.cursor, ffi_box_ptr);
                             rust_sync_unlock(ffi_box_ptr);
                         } break;
 
@@ -1659,7 +1651,7 @@ int main (void)
 
                             buffer.cursor = i;
                             buffer.activeInsertID = 0;
-                            send_new_cursor(&buffer, ffi_box_ptr);
+                            rust_send_cursor(buffer.cursor, ffi_box_ptr);
                             rust_sync_unlock(ffi_box_ptr);
                         } break;
 
@@ -1671,7 +1663,7 @@ int main (void)
                             for (i=buffer.cursor; (i < buffer.text.length-1) && (buffer.text.array[i] != 10); i++);
                             buffer.cursor = i+1;
                             buffer.activeInsertID = 0;
-                            send_new_cursor(&buffer, ffi_box_ptr);
+                            rust_send_cursor(buffer.cursor, ffi_box_ptr);
                             rust_sync_unlock(ffi_box_ptr);
                         } break;
 
@@ -1974,8 +1966,8 @@ int main (void)
     SDL_Quit();
 
     //kill the rust thread
-    Uint8 quit_signal[5] = {255, 255, 255, 255, 0};
-    rust_text_input(&quit_signal[0], ffi_box_ptr);
+    Uint8 quit_signal[4] = {255, 255, 255, 255};
+    rust_text_input(&quit_signal[0], 4, ffi_box_ptr);
 
     free(buffer.text.array);
     free(buffer.ID_table.array);

@@ -621,7 +621,9 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                     let new_text = str::from_utf8(&new_text_raw[..]).expect("Got invalid UTF-8 from SDL!");
 
                     println!("Received text!");
-                    for character in new_text.chars()
+
+                    let mut text_iter = new_text.chars();
+                    while let Some(character) = text_iter.next()
                     {
                         if character == 127 as char
                         {
@@ -651,12 +653,13 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                         else if character == 31 as char //ASCII unit separator: sent to indicate that the previous stream of text is terminated and cursor position must be updated
                         {
                             assert!(syncstate == BackendSyncstate::lockedsync, "Tried to update cursor position (ASCII 31) while not synchronized!");
-                            let mut new_cursor_pos: usize = input_receiver.blocking_pop() as usize;
-                            new_cursor_pos += (input_receiver.blocking_pop() as usize)<<8;
-                            new_cursor_pos += (input_receiver.blocking_pop() as usize)<<16;
-                            new_cursor_pos += (input_receiver.blocking_pop() as usize)<<24;
+                            let mut new_cursor_pos: usize = (text_iter.next().unwrap() as u8) as usize;
+                            new_cursor_pos += ( (text_iter.next().unwrap() as u8) as usize)<<8;
+                            new_cursor_pos += ( (text_iter.next().unwrap() as u8) as usize)<<16;
+                            new_cursor_pos += ( (text_iter.next().unwrap() as u8) as usize)<<24;
 
                             assert!(new_cursor_pos <= text_buffer.text.len());
+                            println!("new cursor position: {}", new_cursor_pos);
                             text_buffer.cursor_globalPos = new_cursor_pos;
 
                             text_buffer.active_insert = None;
@@ -669,7 +672,12 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                             match syncstate
                             {
                                 BackendSyncstate::lockedsync => panic!("Can't sync while in lockedsync mode"),
-                                BackendSyncstate::unsynced => assert!(sender.push('f' as u8), "Backend sender queue overflowed"),
+                                BackendSyncstate::unsynced =>
+                                {
+                                    assert!(sender.push('f' as u8), "Backend sender queue overflowed");
+                                    assert!(sender.push('r' as u8));
+                                    syncstate = BackendSyncstate::waiting; //retry immediately
+                                },
                                 BackendSyncstate::waiting =>
                                 {
                                     assert!(input_receiver.len() == 0);
@@ -689,9 +697,20 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                         }
                                     }
                                     is_buffer_locked.store(false, Ordering::Release);
+                                    syncstate = BackendSyncstate::lockedsync;
                                     assert!(sender.push('s' as u8));
                                 },
                                 _ => ()
+                            }
+                        }
+
+                        else if character == 5 as char //ASCII 'ENQ'
+                        {
+                            if syncstate != BackendSyncstate::waiting
+                            {
+                                assert!(syncstate == BackendSyncstate::unsynced);
+                                assert!(sender.push('r' as u8));
+                                syncstate = BackendSyncstate::waiting;
                             }
                         }
 
@@ -923,28 +942,18 @@ fn delete_character (position: usize, set: &mut TextInsertSet, network: &mut Net
 
 
 #[no_mangle]
-pub unsafe extern fn rust_text_input (text: *const u8, box_ptr: *mut FFIData)
+pub unsafe extern fn rust_text_input (text: *const u8, length: i32, box_ptr: *mut FFIData) //only for input, not command sending!!!
 {
 	let mut ffi = Box::from_raw(box_ptr);
 	{
         ffi.state = FrontendSyncstate::unsynced;
 
-		let mut i = 0;
-		loop
+		for i in 0..length as isize
 		{
-			if *text.offset(i) == 0
-			{
-				break;
-			}
-			else
-			{
-				while ffi.sender.push(*text.offset(i)) == false
-                {
-                    println!("rust_text_input says: keypress buffer has run full");
-                    ffi.tent.sleep();
-                }
-			}
-            i += 1;
+            while ffi.sender.push(*text.offset(i)) == false
+            {
+                println!("rust_text_input says: keypress buffer has run full");
+            }
 		}
 	}
 	mem::forget(ffi);
@@ -1017,6 +1026,7 @@ pub unsafe extern fn rust_blocking_sync_text (ffi_data: *mut FFIData)
 
     if ffi.state == FrontendSyncstate::unsynced
     {
+        while !ffi.sender.push(5) {} //ASCII 'ENQ'
         loop
         {
             if let Some(msg) = ffi.receiver.pop()
@@ -1055,6 +1065,25 @@ pub unsafe extern fn rust_sync_unlock (ffi_data: *mut FFIData)
     else
     {
         //println!("Trying to unlock from non-unlock state. Nothing will happen.")
+    }
+    mem::forget(ffi);
+}
+
+#[no_mangle]
+pub unsafe extern fn rust_send_cursor (cursor: u32, ffi_data: *mut FFIData)
+{
+    let mut ffi = Box::from_raw(ffi_data);
+    if ffi.state == FrontendSyncstate::lockedsync
+    {
+        while !ffi.sender.push(31) {} //ASCII 'US'
+        while !ffi.sender.push(cursor as u8) {}
+        while !ffi.sender.push((cursor >> 8) as u8) {}
+        while !ffi.sender.push((cursor >> 16) as u8) {}
+        while !ffi.sender.push((cursor >> 24) as u8) {} //TODO: blocking push function
+    }
+    else
+    {
+        println!("Warning: trying to update cursor while not in lockedsync");
     }
     mem::forget(ffi);
 }
