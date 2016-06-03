@@ -739,6 +739,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                 render_text(&set, &mut text_buffer);//TODO: initialize with correct cursor position
                 assert!(sender.push('r' as u8) == true);
                 syncstate = BackendSyncstate::waiting;
+                text_buffer.needs_updating = false;
 
                 println!("Newly rendered text: {:?}", &text_buffer.text);
                 println!("Data: {:?}", &set);
