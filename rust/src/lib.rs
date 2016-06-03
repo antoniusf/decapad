@@ -672,10 +672,11 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                 BackendSyncstate::unsynced => assert!(sender.push('f' as u8), "Backend sender queue overflowed"),
                                 BackendSyncstate::waiting =>
                                 {
+                                    assert!(input_receiver.len() == 0);
+                                    assert!(is_buffer_locked.load(Ordering::Acquire) == true);
+
                                     unsafe
                                     {
-                                        assert!(input_receiver.len() == 0);
-                                        assert!(is_buffer_locked.load(Ordering::Acquire) == true);
 
                                         let mut c_text_buffer = &mut *c_pointers.text_buffer;
                                         c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
@@ -688,6 +689,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                         }
                                     }
                                     is_buffer_locked.store(false, Ordering::Release);
+                                    assert!(sender.push('s' as u8));
                                 },
                                 _ => ()
                             }
