@@ -12,17 +12,15 @@ fe_transitions = [ { "begin": "ls", "end": "ls", "push": "c",  "pop": None },
                    { "begin": "ls", "end": "us", "push": "u",  "pop": None },
                    { "begin": "us", "end": "us", "push": "i",  "pop": None },
                    { "begin": "us", "end": "sy", "push": "b",  "pop": "r"  },
-                   #{ "begin": "sy", "end": "sy", "push": None, "pop": "r"  },
+                   { "begin": "sy", "end": "sy", "push": None, "pop": "r"  },
                    { "begin": "sy", "end": "us", "push": None, "pop": "f"  },
                    { "begin": "sy", "end": "ls", "push": None, "pop": "s"  } ]
 
 be_transitions = [ { "begin": "ls", "end": "ls", "push": None, "pop": "c"  },
                    { "begin": "ls", "end": "us", "push": None, "pop": "u"  },
                    { "begin": "us", "end": "us", "push": None, "pop": "i"  },
-                   { "begin": "us", "end": "us", "push": "f" , "pop": "b"  },
-                   { "begin": "us", "end": "ws", "push": "r" , "pop": None },
-                   { "begin": "ws", "end": "us", "push": None, "pop": "i"  },
-                   { "begin": "ws", "end": "sy", "push": None, "pop": "b"  },
+                   { "begin": "us", "end": "sy", "push": None, "pop": "b"  },
+                   { "begin": "us", "end": "us", "push": "r" , "pop": None },
                    { "begin": "sy", "end": "us", "push": "f" , "pop": None },
                    { "begin": "sy", "end": "ls", "push": "s" , "pop": None } ]
 
