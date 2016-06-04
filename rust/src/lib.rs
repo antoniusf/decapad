@@ -501,11 +501,19 @@ fn synchronize_buffers ( text_buffer: &TextBufferInternal, c_pointers: &ThreadPo
         let mut c_text_buffer = &mut *c_pointers.text_buffer;
         c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
         c_text_buffer.ahead_cursor = c_text_buffer.cursor;
+
         expandDynamicArray_uint32(&mut c_text_buffer.text, text_buffer.text.len());
         c_text_buffer.text.length = text_buffer.text.len() as c_long;
         for (offset, character) in text_buffer.text.iter().enumerate()
         {
             *c_text_buffer.text.array.offset(offset as isize) = *character as u32;
+        }
+
+        expandDynamicArray_uint32(&mut c_text_buffer.author_table, text_buffer.author_table.len());
+        c_text_buffer.author_table.length = text_buffer.author_table.len() as c_long;
+        for (offset, author_ID) in text_buffer.author_table.iter().enumerate()
+        {
+            *c_text_buffer.author_table.array.offset(offset as isize) = *author_ID;
         }
     }
 
