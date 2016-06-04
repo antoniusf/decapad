@@ -11,7 +11,8 @@ def add_possible_state(state):
 fe_transitions = [ { "begin": "ls", "end": "ls", "push": "c",  "pop": None },
                    { "begin": "ls", "end": "us", "push": "u",  "pop": None },
                    { "begin": "us", "end": "us", "push": "i",  "pop": None },
-                   { "begin": "us", "end": "sy", "push": "b",  "pop": "r"  },
+                   { "begin": "us", "end": "us", "push": None, "pop": "r"  },
+                   { "begin": "us", "end": "sy", "push": "b",  "pop": None },
                    { "begin": "sy", "end": "sy", "push": None, "pop": "r"  },
                    { "begin": "sy", "end": "us", "push": None, "pop": "f"  },
                    { "begin": "sy", "end": "ls", "push": None, "pop": "s"  } ]
