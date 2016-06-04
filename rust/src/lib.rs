@@ -26,7 +26,7 @@ use std::time::Duration;
 
 extern crate libc;
 extern crate crc;
-use crc::crc32::checksum_ieee;
+use crc::crc32::checksum_ieee; //TODO: replace this?
 
 
 fn deserialize_u32 (buffer: &[u8]) -> u32
@@ -120,9 +120,12 @@ impl TextInsert
 
     fn send(&self, network: &mut NetworkState)
     {
-        let mut buffer: Vec<u8> = Vec::with_capacity(20+self.content.len());
+        let mut buffer: Vec<u8> = Vec::with_capacity(24+self.content.len());
         buffer.extend_from_slice("data".as_bytes());
         self.serialize(&mut buffer);
+        let checksum = checksum_ieee(&buffer[4..]);
+        serialize_u32(checksum, &mut buffer);
+
         network.send(&buffer[..]);
     }
 
@@ -626,26 +629,33 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
                         else if "data".as_bytes() == &buffer[0..4] //TODO: check checksum...
                         {
-                            println!("Received insert.");
-                            match backend_state
+                            if checksum_ieee(&buffer[4..bytes-4]) == deserialize_u32(&buffer[bytes-4..bytes])
                             {
-                                Some(ref backend_state_unpacked) =>
+                                println!("Received insert.");
+                                match backend_state
                                 {
-                                    match TextInsert::deserialize(&buffer[4..bytes], &mut set, &backend_state_unpacked)
+                                    Some(ref backend_state_unpacked) =>
                                     {
-                                        Some((insert_data_length, insert_ID)) =>
+                                        match TextInsert::deserialize(&buffer[4..bytes-4], &mut set, &backend_state_unpacked)
                                         {
-                                            text_buffer.needs_updating = true;
-                                            let mut ack_buffer = Vec::with_capacity(8);
-                                            ack_buffer.extend_from_slice("ack ".as_bytes());
-                                            serialize_u32(insert_ID, &mut ack_buffer);
-                                            network.send(&ack_buffer[..]);
-                                            println!("Deserialized insert.");
-                                        },
-                                        None => ()
-                                    }
-                                },
-                                None => println!("Received data without being initialized first.")
+                                            Some((insert_data_length, insert_ID)) =>
+                                            {
+                                                text_buffer.needs_updating = true;
+                                                let mut ack_buffer = Vec::with_capacity(8);
+                                                ack_buffer.extend_from_slice("ack ".as_bytes());
+                                                serialize_u32(insert_ID, &mut ack_buffer);
+                                                network.send(&ack_buffer[..]);
+                                                println!("Deserialized insert.");
+                                            },
+                                            None => ()
+                                        }
+                                    },
+                                    None => println!("Received data without being initialized first.")
+                                }
+                            }
+                            else
+                            {
+                                println!("Received insert, but checksum was incorrect");
                             }
                         }
 
