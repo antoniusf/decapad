@@ -491,6 +491,27 @@ unsafe fn expandDynamicArray_uint32 (array: &mut DynamicArray_uint32, new_length
     return 0;
 }
 
+fn synchronize_buffers ( text_buffer: &TextBufferInternal, c_pointers: &ThreadPointerWrapper, is_buffer_locked: &Arc<AtomicBool> )
+{
+    assert!(is_buffer_locked.load(Ordering::Acquire) == true);
+
+    unsafe
+    {
+
+        let mut c_text_buffer = &mut *c_pointers.text_buffer;
+        c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
+        c_text_buffer.ahead_cursor = c_text_buffer.cursor;
+        expandDynamicArray_uint32(&mut c_text_buffer.text, text_buffer.text.len());
+        c_text_buffer.text.length = text_buffer.text.len() as c_long;
+        for (offset, character) in text_buffer.text.iter().enumerate()
+        {
+            *c_text_buffer.text.array.offset(offset as isize) = *character as u32;
+        }
+    }
+
+    is_buffer_locked.store(false, Ordering::Release);
+}
+
 #[no_mangle]
 pub unsafe extern fn start_backend (own_port: u16, other_port: u16, textbuffer_ptr: *mut TextBuffer) -> *mut FFIData
 {
@@ -733,22 +754,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                 BackendSyncstate::unsynced =>
                                 {
                                     assert!(input_receiver.len() == 0);
-                                    assert!(is_buffer_locked.load(Ordering::Acquire) == true);
-
-                                    unsafe
-                                    {
-
-                                        let mut c_text_buffer = &mut *c_pointers.text_buffer;
-                                        c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
-                                        c_text_buffer.ahead_cursor = c_text_buffer.cursor;
-                                        expandDynamicArray_uint32(&mut c_text_buffer.text, text_buffer.text.len());
-                                        c_text_buffer.text.length = text_buffer.text.len() as c_long;
-                                        for (offset, character) in text_buffer.text.iter().enumerate()
-                                        {
-                                            *c_text_buffer.text.array.offset(offset as isize) = *character as u32;
-                                        }
-                                    }
-                                    is_buffer_locked.store(false, Ordering::Release);
+                                    synchronize_buffers(&text_buffer, &c_pointers, &is_buffer_locked);
                                     syncstate = BackendSyncstate::lockedsync;
                                     assert!(sender.push('s' as u8));
                                 },
@@ -811,22 +817,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                         input_receiver.pop();
 
                         //synchronize
-                        assert!(is_buffer_locked.load(Ordering::Acquire) == true);
-
-                        unsafe
-                        {
-
-                            let mut c_text_buffer = &mut *c_pointers.text_buffer;
-                            c_text_buffer.cursor = text_buffer.cursor_globalPos as c_int;
-                            c_text_buffer.ahead_cursor = c_text_buffer.cursor;
-                            expandDynamicArray_uint32(&mut c_text_buffer.text, text_buffer.text.len());
-                            c_text_buffer.text.length = text_buffer.text.len() as c_long;
-                            for (offset, character) in text_buffer.text.iter().enumerate()
-                            {
-                                *c_text_buffer.text.array.offset(offset as isize) = *character as u32;
-                            }
-                        }
-                        is_buffer_locked.store(false, Ordering::Release);
+                        synchronize_buffers(&text_buffer, &c_pointers, &is_buffer_locked);
                         syncstate = BackendSyncstate::lockedsync;
                         assert!(sender.push('s' as u8));
                     }
