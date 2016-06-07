@@ -281,7 +281,7 @@ struct ProtocolBackendState
 struct InsertAppendPosition
 {
     ID: u32,
-    position: u16 //TODO: maybe limit insert length to 255...
+    position: u8
 }
 
 
@@ -305,12 +305,12 @@ impl NetworkState
         }
     }
 
-    fn send_acka (&self, ID: u32, length: u16)
+    fn send_acka (&self, ID: u32, length: u8)
     {
         let mut ack_buffer = Vec::new();
         ack_buffer.extend_from_slice("acka".as_bytes());
         serialize_u32(ID, &mut ack_buffer);
-        serialize_u16(length, &mut ack_buffer);
+        ack_buffer.push(length);
         self.send(&ack_buffer[..]);
     }
 
@@ -354,14 +354,14 @@ impl NetworkState
                             can_send_append = true;
                             let append_pos = self.append_positions[i].position;
 
-                            if append_pos < insert.content.len() as u16
+                            if append_pos < insert.content.len() as u8
                             {
 
                                 //send apnd
                                 let mut buffer = Vec::new();
                                 buffer.extend_from_slice("apnd".as_bytes());
                                 serialize_u32(ID, &mut buffer);
-                                serialize_u16(append_pos, &mut buffer);
+                                buffer.push(append_pos);
 
                                 let mut utf8_content = String::new();
                                 for character in &insert.content[append_pos as usize..]
@@ -746,7 +746,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
                                                 if new_insert_created
                                                 {
-                                                    network.send_acka(insert.ID, insert.content.len() as u16);
+                                                    network.send_acka(insert.ID, insert.content.len() as u8);
                                                 }
                                             },
                                             None => ()
@@ -775,7 +775,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
                         else if "apnd".as_bytes() == &buffer[0..4]
                         {
-                            if bytes >= 4+4+2+4
+                            if bytes >= 4+4+1+4
                             {
                                 if checksum_ieee(&buffer[4..bytes-4]) == deserialize_u32(&buffer[bytes-4..bytes])
                                 {
@@ -785,8 +785,8 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
                                         if let Some(mut insert) = get_insert_by_ID_mut(insert_ID, &mut set)
                                         {
-                                            let data_length = bytes-4-4-2-4;
-                                            let append_start = deserialize_u16(&buffer[8..10]) as usize;
+                                            let data_length = bytes-4-4-1-4;
+                                            let append_start = buffer[8] as usize;
 
                                             if data_length+append_start <= insert.content.len()
                                             {
@@ -798,11 +798,11 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                                 let mut data;
                                                 if append_start < insert.content.len()
                                                 {
-                                                    data = Some(&buffer[insert.content.len()-append_start +4+4+2 .. bytes-4]);
+                                                    data = Some(&buffer[insert.content.len()-append_start +4+4+1 .. bytes-4]);
                                                 }
                                                 else if append_start == insert.content.len()
                                                 {
-                                                    data = Some(&buffer[4+4+2..bytes-4]);
+                                                    data = Some(&buffer[4+4+1..bytes-4]);
                                                 }
                                                 else
                                                 {
@@ -823,7 +823,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                                 }
                                             }
 
-                                            network.send_acka(insert.ID, insert.content.len() as u16);
+                                            network.send_acka(insert.ID, insert.content.len() as u8);
                                         }
                                     }
                                 }
@@ -832,10 +832,10 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
                         else if "acka".as_bytes() == &buffer[0..4]
                         {
-                            if bytes == 4+4+2
+                            if bytes == 4+4+1
                             {
                                 let insert_ID = deserialize_u32(&buffer[4..8]);
-                                let acknowledged_position = deserialize_u16(&buffer[8..10]);
+                                let acknowledged_position = buffer[8];
 
                                 let mut remove_position_ID = None;
                                 for append_position in network.append_positions.iter_mut()
@@ -848,9 +848,9 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
                                             if let Some(insert) = get_insert_by_ID(insert_ID, &set)
                                             {
-                                                if append_position.position > insert.content.len() as u16
+                                                if append_position.position > insert.content.len() as u8
                                                 {
-                                                    append_position.position = insert.content.len() as u16;
+                                                    append_position.position = insert.content.len() as u8;
                                                     println!("Received an acka with append position out of bounds.");
                                                 }
 
