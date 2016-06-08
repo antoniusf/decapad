@@ -119,6 +119,20 @@ impl TextInsert
         }
     }
 
+    fn get_number_of_deleted_chars (&self) -> u8
+    {
+        let mut number = 0;
+        for character in self.content.iter()
+        {
+            if *character == 127 as char
+            {
+                number += 1;
+            }
+        }
+
+        return number;
+    }
+
     fn serialize (&self, buffer: &mut Vec<u8>)
     {
         let mut content_string = String::with_capacity(self.content.len()); //convert to UTF-8
@@ -176,7 +190,7 @@ impl TextInsert
         {
             Ok(content_string) => 
             {
-                let mut content: Vec<char> = Vec::with_capacity(255);
+                let mut content: Vec<char> = Vec::with_capacity(254); //TODO: check that this length is not exceeded
                 for character in content_string.chars()
                 {
                     content.push(character);
@@ -277,11 +291,19 @@ struct ProtocolBackendState
     author_ID: u32
 }
 
-#[derive(Debug)]
-struct InsertAppendPosition
+#[derive(Clone, Copy, Debug)]
+enum SendType
+{
+    Full,
+    Append { position: u8 },
+    Delete { start_pos: u8, end_pos: u8 }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SendQueueEntry
 {
     ID: u32,
-    position: u8
+    kind: SendType
 }
 
 
@@ -290,8 +312,7 @@ struct NetworkState
 {
     socket: net::UdpSocket,
     other_address: net::SocketAddr,
-    send_queue: VecDeque<u32>,
-    append_positions: Vec<InsertAppendPosition>
+    send_queue: VecDeque<SendQueueEntry>,
 }
 
 impl NetworkState
@@ -314,94 +335,137 @@ impl NetworkState
         self.send(&ack_buffer[..]);
     }
 
-
-    fn enqueue_insert (&mut self, ID: u32)
+    fn get_queue_entry (&self, ID: u32) -> Option<usize>
     {
-        let do_enqueue =
-        {//we need to make this an extra block, because as_slices makes a borrow
-            let (a, b) = self.send_queue.as_slices();
-            if (a.contains(&ID)) | (b.contains(&ID))
-            {
-                false
-            }
-            else
-            {
-                true
-            }
-        };
-
-        if do_enqueue
+        for (index, entry) in self.send_queue.iter().enumerate()
         {
-            self.send_queue.push_back(ID);
+            if entry.ID == ID
+            {
+                return Some(index);
+            }
+        }
+        return None;
+    }
+
+    fn enqueue_full (&mut self, ID: u32)
+    {
+        if let Some(index) = self.get_queue_entry(ID)
+        {
+            let entry = &mut self.send_queue[index];
+            match entry.kind
+            {
+                SendType::Full => (),
+                SendType::Append {..} | SendType::Delete {..} => entry.kind = SendType::Full
+            }
+        }
+
+        else
+        {
+            self.send_queue.push_back( SendQueueEntry { ID: ID, kind: SendType::Full });
+        }
+    }
+
+    fn enqueue_append (&mut self, ID: u32, position: u8)
+    {
+        if let Some(index) = self.get_queue_entry(ID)
+        {
+            let entry = self.send_queue[index];
+            match entry.kind
+            {
+                SendType::Full => (),
+                SendType::Delete {..} => self.send_queue.push_back( SendQueueEntry { ID: ID, kind: SendType::Append { position: position } }),
+                SendType::Append {..} => ()
+            }
+        }
+
+        else
+        {
+            self.send_queue.push_back( SendQueueEntry { ID: ID, kind: SendType::Append { position: position } });
+        }
+    }
+
+    fn enqueue_delete (&mut self, ID: u32, start: u8, end: u8)
+    {
+        let mut append_new = false;
+
+        if let Some(index) = self.get_queue_entry(ID)
+        {
+            let entry = &mut self.send_queue[index];
+            match entry.kind
+            {
+                SendType::Full => (),
+                SendType::Delete { ref mut start_pos, ref mut end_pos } =>
+                {
+                    *start_pos = start;
+                    *end_pos = end;
+                },
+                SendType::Append {..} => append_new = true
+            }
+        }
+        
+        else
+        {
+            append_new = true;
+        }
+
+        if append_new
+        {
+            self.send_queue.push_back( SendQueueEntry { ID: ID, kind: SendType::Delete { start_pos: start, end_pos: end }});
         }
     }
 
     fn resend_next_insert(&mut self, set: &TextInsertSet)
     {
-        if let Some(ID) = self.send_queue.pop_front()
+        if let Some(entry) = self.send_queue.pop_front()
         {
-            if let Some(insert) = get_insert_by_ID(ID, set)
+            if let Some(insert) = get_insert_by_ID(entry.ID, set)
             {
-                self.send_queue.push_back(ID);
+                self.send_queue.push_back(entry);
 
-                let mut can_send_append = false;
-                for i in 0..self.append_positions.len()
+                match entry.kind
                 {
-                    if self.append_positions[i].ID == ID
+                    SendType::Full => insert.send(self),
+                    SendType::Append { position } =>
                     {
-                        if self.append_positions[i].position > 0
+                        if position < insert.content.len() as u8
                         {
-                            can_send_append = true;
-                            let append_pos = self.append_positions[i].position;
+                            let mut buffer = Vec::new();
+                            buffer.extend_from_slice("apnd".as_bytes());
+                            serialize_u32(insert.ID, &mut buffer);
+                            buffer.push(position);
 
-                            if append_pos < insert.content.len() as u8
+                            let mut utf8_content = String::new();
+                            for character in &insert.content[position as usize..]
                             {
-
-                                //send apnd
-                                let mut buffer = Vec::new();
-                                buffer.extend_from_slice("apnd".as_bytes());
-                                serialize_u32(ID, &mut buffer);
-                                buffer.push(append_pos);
-
-                                let mut utf8_content = String::new();
-                                for character in &insert.content[append_pos as usize..]
-                                {
-                                    utf8_content.push(*character);
-                                }
-
-                                buffer.extend_from_slice(utf8_content.as_bytes());
-
-                                let checksum = checksum_ieee(&buffer[4..]);
-                                serialize_u32(checksum, &mut buffer);
-
-                                self.send(&buffer[..]);
+                                utf8_content.push(*character);
                             }
+
+                            buffer.extend_from_slice(utf8_content.as_bytes());
+
+                            let checksum = checksum_ieee(&buffer[4..]);
+                            serialize_u32(checksum, &mut buffer);
+
+                            self.send(&buffer[..]);
                         }
+                    },
+                    SendType::Delete { start_pos, end_pos } =>
+                    {
+                        let mut buffer = Vec::new();
+                        buffer.extend_from_slice("del ".as_bytes());
+                        serialize_u32(insert.ID, &mut buffer);
+                        buffer.push(start_pos);
+                        buffer.push(end_pos);
 
-                        break;
+                        let checksum = checksum_ieee(&buffer[4..]);
+                        serialize_u32(checksum, &mut buffer);
+
+                        self.send(&buffer[..]);
                     }
-                }
-
-                if !can_send_append
-                {
-                    insert.send(self);
                 }
             }
             else
             {
                 println!("Warning: the insert send queue contained an unknown insert ID.");
-            }
-        }
-    }
-
-    fn remove_append_position (&mut self, ID: u32)
-    {
-        for i in 0..self.append_positions.len()
-        {
-            if self.append_positions[i].ID == ID
-            {
-                self.append_positions.remove(i);
-                break;
             }
         }
     }
@@ -668,7 +732,6 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                 socket: own_socket,
                 other_address: net::SocketAddr::V4(net::SocketAddrV4::new(net::Ipv4Addr::new(127, 0, 0, 1), other_port)),
                 send_queue: VecDeque::new(),
-                append_positions: Vec::new()
             }
         ;
 		
@@ -741,6 +804,8 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                                 let mut ack_buffer = Vec::with_capacity(8);
                                                 ack_buffer.extend_from_slice("ack ".as_bytes());
                                                 serialize_u32(insert.ID, &mut ack_buffer);
+                                                ack_buffer.push(insert.content.len() as u8);
+                                                ack_buffer.push(insert.get_number_of_deleted_chars());
                                                 network.send(&ack_buffer[..]);
                                                 println!("Deserialized insert.");
 
@@ -763,12 +828,20 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
                         else if "ack ".as_bytes() == &buffer[0..4]
                         {
-                            if bytes == 4+4
+                            if bytes == 4+4+1+1
                             {
                                 let ack_ID = deserialize_u32(&buffer[4..8]);
-                                if let Some(index) = network.send_queue.iter().position(|&x| x == ack_ID)
+                                let ack_content_length = buffer[8];
+                                let ack_deleted_chars = buffer[9];
+                                if let Some(index) = network.send_queue.iter().position(|&x| x.ID == ack_ID)
                                 {
-                                    network.send_queue.remove(index);
+                                    if let Some(insert) = get_insert_by_ID(ack_ID, &set)
+                                    {
+                                        if (ack_content_length >= insert.content.len() as u8) & (ack_deleted_chars >= insert.get_number_of_deleted_chars())
+                                        {
+                                            network.send_queue.remove(index);
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -837,35 +910,97 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                 let insert_ID = deserialize_u32(&buffer[4..8]);
                                 let acknowledged_position = buffer[8];
 
-                                let mut remove_position_ID = None;
-                                for append_position in network.append_positions.iter_mut()
+                                if let Some(entry_index) = network.get_queue_entry(insert_ID)
                                 {
-                                    if append_position.ID == insert_ID
+                                    if let Some(insert) = get_insert_by_ID(insert_ID, &set)
                                     {
-                                        if append_position.position < acknowledged_position
                                         {
-                                            append_position.position = acknowledged_position;
-
-                                            if let Some(insert) = get_insert_by_ID(insert_ID, &set)
+                                            let entry = &mut network.send_queue[entry_index];
+                                            match entry.kind
                                             {
-                                                if append_position.position > insert.content.len() as u8
+                                                SendType::Append { ref mut position } =>
                                                 {
-                                                    append_position.position = insert.content.len() as u8;
-                                                    println!("Received an acka with append position out of bounds.");
+                                                    if *position < acknowledged_position
+                                                    {
+                                                        *position = acknowledged_position;
+
+                                                        if *position > insert.content.len() as u8
+                                                        {
+                                                            *position = insert.content.len() as u8;
+                                                            println!("Received an acka with append position out of bounds.");
+                                                        }
+                                                    }
+                                                },
+                                                _ => ()
+                                            }
+                                        }
+
+                                        if insert.content.len() == acknowledged_position as usize
+                                        {
+                                            network.send_queue.remove(entry_index);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        else if "del ".as_bytes() == &buffer[0..4]
+                        {
+                            if bytes == 4+4+1+1+4
+                            {
+                                if checksum_ieee(&buffer[4..bytes-4]) == deserialize_u32(&buffer[bytes-4..bytes])
+                                {
+                                    if backend_state.is_some()
+                                    {
+                                        let insert_ID = deserialize_u32(&buffer[4..8]);
+                                        let start_pos = buffer[8];
+                                        let end_pos = buffer[9];
+
+                                        if let Some(mut insert) = get_insert_by_ID_mut(insert_ID, &mut set)
+                                        {
+                                            if (start_pos <= end_pos) & (end_pos <= insert.content.len() as u8)
+                                            {
+                                                for i in start_pos as usize ..end_pos as usize
+                                                {
+                                                    insert.content[i] = 127 as char;
+                                                    text_buffer.needs_updating = true;
                                                 }
 
-                                                if (text_buffer.active_insert != Some(insert_ID)) & (insert.content.len() == acknowledged_position as usize) //insert is closed and has been transmitted completely
-                                                {
-                                                    remove_position_ID = Some(insert_ID);
-                                                }
+                                                let mut ack_buffer = Vec::new();
+                                                ack_buffer.extend_from_slice("ackd".as_bytes());
+                                                serialize_u32(insert.ID, &mut ack_buffer);
+                                                ack_buffer.push(start_pos);
+                                                ack_buffer.push(end_pos);
+                                                network.send(&ack_buffer[..]);
                                             }
                                         }
                                     }
                                 }
+                            }
+                        }
 
-                                if let Some(ID) = remove_position_ID
+                        else if "ackd".as_bytes() == &buffer[0..4]
+                        {
+                            if bytes == 4+4+1+1
+                            {
+                                let insert_ID = deserialize_u32(&buffer[4..8]);
+                                let start_pos = buffer[8];
+                                let end_pos = buffer[9];
+
+                                if let Some(index) = network.get_queue_entry(insert_ID)
                                 {
-                                    network.remove_append_position(ID);
+                                    let entry = network.send_queue[index];
+                                    match entry.kind
+                                    {
+                                        SendType::Delete { start_pos: stored_start_pos, end_pos: stored_end_pos } =>
+                                        {
+                                            if (stored_start_pos == start_pos) & (stored_end_pos == end_pos)
+                                            {
+                                                network.send_queue.remove(index);
+                                            }
+                                        },
+                                        _ => ()
+                                    }
                                 }
                             }
                         }
@@ -1106,12 +1241,12 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
     {
         if let Some(active_insert) = get_insert_by_ID_mut(active_insert_ID, &mut *set)
         {
-            if active_insert.content.len() < 255
+            if active_insert.content.len() < 254
             {
+                network.enqueue_append(active_insert.ID, active_insert.content.len() as u8);
                 active_insert.content.push(character);
                 text_buffer.cursor_ID = Some(active_insert.ID);
                 text_buffer.cursor_charPos = Some(active_insert.content.len() as u8);
-                network.enqueue_insert(active_insert_ID);
             }
             else
             {
@@ -1195,8 +1330,7 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
         text_buffer.cursor_charPos = Some(1);
 
         text_buffer.active_insert = Some(new_insert.ID);
-        network.send_queue.push_back(new_insert.ID);
-        network.append_positions.push( InsertAppendPosition { ID: new_insert.ID, position: 0 });
+        network.send_queue.push_back(SendQueueEntry { ID: new_insert.ID, kind: SendType::Full });
 
         set.push(new_insert);
         //TODO: send_now?
@@ -1212,8 +1346,7 @@ fn delete_character (position: usize, set: &mut TextInsertSet, network: &mut Net
         let mut insert = get_insert_by_ID_mut(text_buffer.ID_table[position], &mut *set).expect("delete_character says: ID_table contains at least one ID that is not associated to any insert in our vector. This should not happen.");
 
         insert.content[text_buffer.charPos_table[position] as usize] = 127 as char;
-        network.remove_append_position(insert.ID); //TODO: more efficient deletion
-        network.enqueue_insert(insert.ID);
+        network.enqueue_delete(insert.ID, text_buffer.charPos_table[position], text_buffer.charPos_table[position]+1);
         //TODO: send_now
     }
 }
