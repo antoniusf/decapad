@@ -195,7 +195,12 @@ impl TextInsert
                 {
                     content.push(character);
                 }
-                content.shrink_to_fit(); //TODO: is this good or no good?
+                content.shrink_to_fit();
+
+                if content.len() > 255
+                {
+                    return None;
+                }
 
                 match get_insert_by_ID_index(ID, &*set)
                 {
@@ -1241,7 +1246,7 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
     {
         if let Some(active_insert) = get_insert_by_ID_mut(active_insert_ID, &mut *set)
         {
-            if active_insert.content.len() < 254
+            if active_insert.content.len() < 255
             {
                 network.enqueue_append(active_insert.ID, active_insert.content.len() as u8);
                 active_insert.content.push(character);
