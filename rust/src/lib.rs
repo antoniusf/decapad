@@ -317,6 +317,8 @@ struct NetworkState
     socket: net::UdpSocket,
     other_address: net::SocketAddr,
     send_queue: VecDeque<SendQueueEntry>,
+    cheap_queue: VecDeque<(u32, Vec<u8>)>,
+    cheap_counter: u32
 }
 
 impl NetworkState
@@ -333,6 +335,18 @@ impl NetworkState
             Err(error) => println!("Failed to send data: {:?}", error),
             _ => ()
         }
+    }
+
+    fn send_cheap (&mut self, data: &[u8])
+    {
+        let message_id = self.cheap_counter;
+        self.cheap_counter += 1;
+
+        let mut augmented_message = Vec::with_capacity(data.len()+1);
+        augmented_message.push('c' as u8);
+        serialize_u32(message_id, &mut augmented_message);
+        augmented_message.extend_from_slice(data);
+        self.cheap_queue.push_back((message_id, augmented_message));
     }
 
     fn send_acka (&self, ID: u32, length: u8)
@@ -423,7 +437,7 @@ impl NetworkState
         }
     }
 
-    fn resend_next_insert(&mut self, set: &TextInsertSet)
+    fn resend(&mut self, set: &TextInsertSet)
     {
         if let Some(entry) = self.send_queue.pop_front()
         {
@@ -470,6 +484,12 @@ impl NetworkState
             {
                 println!("Warning: the insert send queue contained an unknown insert ID.");
             }
+        }
+
+        if let Some((msg_id, msg)) = self.cheap_queue.pop_front()
+        {
+            self.send(&msg[..]);
+            self.cheap_queue.push_back((msg_id, msg));
         }
     }
 }
@@ -735,6 +755,8 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                 socket: own_socket,
                 other_address: net::SocketAddr::V4(net::SocketAddrV4::new(net::Ipv4Addr::new(127, 0, 0, 1), other_port)),
                 send_queue: VecDeque::new(),
+                cheap_queue: VecDeque::new(),
+                cheap_counter: 0
             }
         ;
 		
@@ -994,6 +1016,37 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                     }
                                 }
                             }
+
+                            else if buffer[4] == 'c' as u8
+                            {
+                                let message_id = deserialize_u32(&buffer[5..9]);
+                                let mut ack = Vec::with_capacity(5);
+                                ack.push('C' as u8);
+                                serialize_u32(message_id, &mut ack);
+
+                                network.send(&ack[..]);
+                            }
+
+                            else if buffer[4] == 'C' as u8
+                            {
+                                let acknowledged_message_id = deserialize_u32(&buffer[5..9]);
+                                let mut delete_index = None;
+                                for i in 0..network.cheap_queue.len()
+                                {
+                                    if network.cheap_queue[i].0 == acknowledged_message_id
+                                    {
+                                        delete_index = Some(i);
+                                    }
+                                }
+
+                                if let Some(index) = delete_index
+                                {
+                                    network.cheap_queue.remove(index);
+                                }
+
+                                let message = &buffer[9..bytes];
+                                //message interpretation code goes here
+                            }
                         }
                     }
                 },
@@ -1001,7 +1054,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 			}
 
             //resend un-ACKed inserts
-            network.resend_next_insert(&set);
+            network.resend(&set);
 			
 			//check input queue
 			{
