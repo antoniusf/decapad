@@ -152,12 +152,9 @@ impl TextInsert
 
     fn send(&self, network: &mut NetworkState)
     {
-        let mut buffer: Vec<u8> = Vec::with_capacity(24+self.content.len());
-        buffer.extend_from_slice("data".as_bytes());
+        let mut buffer: Vec<u8> = Vec::with_capacity(20+self.content.len());
+        buffer.push('i' as u8);
         self.serialize(&mut buffer);
-        let checksum = crc(&buffer[4..]);
-        serialize_u32(checksum, &mut buffer);
-
         network.send(&buffer[..]);
     }
 
@@ -326,7 +323,12 @@ impl NetworkState
 {
     fn send(&self, data: &[u8])
     {
-        match self.socket.send_to(data, &self.other_address)
+        let checkvalue = crc(data);
+        let mut checked_buffer = Vec::with_capacity(4+data.len());
+        serialize_u32(checkvalue, &mut checked_buffer);
+        checked_buffer.extend_from_slice(data);
+
+        match self.socket.send_to(&checked_buffer[..], &self.other_address)
         {
             Err(error) => println!("Failed to send data: {:?}", error),
             _ => ()
@@ -336,7 +338,7 @@ impl NetworkState
     fn send_acka (&self, ID: u32, length: u8)
     {
         let mut ack_buffer = Vec::new();
-        ack_buffer.extend_from_slice("acka".as_bytes());
+        ack_buffer.push('A' as u8);
         serialize_u32(ID, &mut ack_buffer);
         ack_buffer.push(length);
         self.send(&ack_buffer[..]);
@@ -437,7 +439,7 @@ impl NetworkState
                         if position < insert.content.len() as u8
                         {
                             let mut buffer = Vec::new();
-                            buffer.extend_from_slice("apnd".as_bytes());
+                            buffer.push('a' as u8);
                             serialize_u32(insert.ID, &mut buffer);
                             buffer.push(position);
 
@@ -449,22 +451,16 @@ impl NetworkState
 
                             buffer.extend_from_slice(utf8_content.as_bytes());
 
-                            let checksum = crc(&buffer[4..]);
-                            serialize_u32(checksum, &mut buffer);
-
                             self.send(&buffer[..]);
                         }
                     },
                     SendType::Delete { start_pos, end_pos } =>
                     {
                         let mut buffer = Vec::new();
-                        buffer.extend_from_slice("del ".as_bytes());
+                        buffer.push('d' as u8);
                         serialize_u32(insert.ID, &mut buffer);
                         buffer.push(start_pos);
                         buffer.push(end_pos);
-
-                        let checksum = crc(&buffer[4..]);
-                        serialize_u32(checksum, &mut buffer);
 
                         self.send(&buffer[..]);
                     }
@@ -756,60 +752,56 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                 {
                     if address.port() == other_port //TODO: check IP address
                     {
-                        println!("Received data.\n{:?}\n", &buffer[..bytes]);
-                        //length?
-                        if "init".as_bytes() == &buffer[0..4]
+                        println!("Received data.\n{:?}\n", &buffer[4..bytes]);
+
+                        let checkvalue = deserialize_u32(&buffer[0..4]);
+                        if crc(&buffer[4..bytes]) == checkvalue
                         {
-                            if backend_state.is_none()
+                            if 'R' as u8 == buffer[4]
                             {
-                                if bytes == 4+4+4+4
+                                if backend_state.is_none()
                                 {
-                                    if crc(&buffer[0..12]) == deserialize_u32(&buffer[12..16])
+                                    if bytes == 4+1+4+4
                                     {
-                                        let start_ID = deserialize_u32(&buffer[4..8]);
-                                        let end_ID = deserialize_u32(&buffer[8..12]);
+                                        let start_ID = deserialize_u32(&buffer[5..9]);
+                                        let end_ID = deserialize_u32(&buffer[9..13]);
                                         backend_state = Some(ProtocolBackendState { start_ID: start_ID, end_ID: end_ID, author_ID: start_ID } );
                                     }
                                 }
                             }
-                        }
 
-                        else if "inrq".as_bytes() == &buffer[0..4]
-                        {
-                            //send init
-                            match backend_state
+                            else if 'r' as u8 == buffer[4]
                             {
-                                None => backend_state = Some(ProtocolBackendState { start_ID: 1, end_ID: 1025, author_ID: 1 } ), //TODO: find a better scheme for deciding initialization
-                                Some(ProtocolBackendState {end_ID, ..}) =>
+                                //send init
+                                match backend_state
                                 {
-                                    let mut send_buffer: Vec<u8> = Vec::new();
-                                    send_buffer.extend_from_slice("init".as_bytes());
-                                    serialize_u32(end_ID+1, &mut send_buffer);
-                                    serialize_u32(end_ID+1025, &mut send_buffer);
-                                    let checksum: u32 = crc(&send_buffer[..]);
-                                    serialize_u32(checksum, &mut send_buffer);
-                                    network.send(&send_buffer[..]);
+                                    None => backend_state = Some(ProtocolBackendState { start_ID: 1, end_ID: 1025, author_ID: 1 } ), //TODO: find a better scheme for deciding initialization
+                                    Some(ProtocolBackendState {end_ID, ..}) =>
+                                    {
+                                        let mut send_buffer: Vec<u8> = Vec::new();
+                                        send_buffer.push('R' as u8);
+                                        serialize_u32(end_ID+1, &mut send_buffer);
+                                        serialize_u32(end_ID+1025, &mut send_buffer);
+                                        network.send(&send_buffer[..]);
+                                    }
                                 }
                             }
-                        }
 
-                        else if "data".as_bytes() == &buffer[0..4]
-                        {
-                            if crc(&buffer[4..bytes-4]) == deserialize_u32(&buffer[bytes-4..bytes])
+                            else if 'i' as u8 == buffer[4]
                             {
                                 println!("Received insert.");
                                 match backend_state
                                 {
                                     Some(ref backend_state_unpacked) =>
                                     {
-                                        match TextInsert::deserialize(&buffer[4..bytes-4], &mut set, &backend_state_unpacked)
+                                        match TextInsert::deserialize(&buffer[5..bytes], &mut set, &backend_state_unpacked)
                                         {
                                             Some((insert_data_length, insert_index, new_insert_created)) =>
                                             {
                                                 let insert = &set[insert_index];
                                                 text_buffer.needs_updating = true;
                                                 let mut ack_buffer = Vec::with_capacity(8);
-                                                ack_buffer.extend_from_slice("ack ".as_bytes());
+                                                ack_buffer.push('I' as u8);
                                                 serialize_u32(insert.ID, &mut ack_buffer);
                                                 ack_buffer.push(insert.content.len() as u8);
                                                 ack_buffer.push(insert.get_number_of_deleted_chars());
@@ -827,46 +819,40 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                     None => println!("Received data without being initialized first.")
                                 }
                             }
-                            else
-                            {
-                                println!("Received insert, but checksum was incorrect");
-                            }
-                        }
 
-                        else if "ack ".as_bytes() == &buffer[0..4]
-                        {
-                            if bytes == 4+4+1+1
+                            else if 'I' as u8 == buffer[4]
                             {
-                                let ack_ID = deserialize_u32(&buffer[4..8]);
-                                let ack_content_length = buffer[8];
-                                let ack_deleted_chars = buffer[9];
-                                if let Some(index) = network.send_queue.iter().position(|&x| x.ID == ack_ID)
+                                if bytes == 4+1+4+1+1
                                 {
-                                    if let Some(insert) = get_insert_by_ID(ack_ID, &set)
+                                    let ack_ID = deserialize_u32(&buffer[5..9]);
+                                    let ack_content_length = buffer[9];
+                                    let ack_deleted_chars = buffer[10];
+                                    if let Some(index) = network.send_queue.iter().position(|&x| x.ID == ack_ID)
                                     {
-                                        if (ack_content_length >= insert.content.len() as u8) & (ack_deleted_chars >= insert.get_number_of_deleted_chars())
+                                        if let Some(insert) = get_insert_by_ID(ack_ID, &set)
                                         {
-                                            network.send_queue.remove(index);
+                                            if (ack_content_length >= insert.content.len() as u8) & (ack_deleted_chars >= insert.get_number_of_deleted_chars())
+                                            {
+                                                network.send_queue.remove(index);
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
 
-                        else if "apnd".as_bytes() == &buffer[0..4]
-                        {
-                            if bytes >= 4+4+1+4
+                            else if 'a' as u8 == buffer[4]
                             {
-                                if crc(&buffer[4..bytes-4]) == deserialize_u32(&buffer[bytes-4..bytes])
+                                println!("Received apnd.");
+                                if bytes >= 4+1+4+1
                                 {
                                     if backend_state.is_some()
                                     {
-                                        let insert_ID = deserialize_u32(&buffer[4..8]);
+                                        let insert_ID = deserialize_u32(&buffer[5..9]);
 
                                         if let Some(mut insert) = get_insert_by_ID_mut(insert_ID, &mut set)
                                         {
-                                            let data_length = bytes-4-4-1-4;
-                                            let append_start = buffer[8] as usize;
+                                            let data_length = bytes-4-1-4-1;
+                                            let append_start = buffer[9] as usize;
 
                                             if data_length+append_start <= insert.content.len()
                                             {
@@ -878,11 +864,11 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                                 let mut data;
                                                 if append_start < insert.content.len()
                                                 {
-                                                    data = Some(&buffer[insert.content.len()-append_start +4+4+1 .. bytes-4]);
+                                                    data = Some(&buffer[insert.content.len()-append_start +10 .. bytes]);
                                                 }
                                                 else if append_start == insert.content.len()
                                                 {
-                                                    data = Some(&buffer[4+4+1..bytes-4]);
+                                                    data = Some(&buffer[10..bytes]);
                                                 }
                                                 else
                                                 {
@@ -904,64 +890,62 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                             }
 
                                             network.send_acka(insert.ID, insert.content.len() as u8);
+                                            println!("Sent ack apnd");
                                         }
                                     }
                                 }
                             }
-                        }
 
-                        else if "acka".as_bytes() == &buffer[0..4]
-                        {
-                            if bytes == 4+4+1
+                            else if 'A' as u8 == buffer[4]
                             {
-                                let insert_ID = deserialize_u32(&buffer[4..8]);
-                                let acknowledged_position = buffer[8];
-
-                                if let Some(entry_index) = network.get_queue_entry(insert_ID)
+                                if bytes == 4+1+4+1
                                 {
-                                    if let Some(insert) = get_insert_by_ID(insert_ID, &set)
-                                    {
-                                        {
-                                            let entry = &mut network.send_queue[entry_index];
-                                            match entry.kind
-                                            {
-                                                SendType::Append { ref mut position } =>
-                                                {
-                                                    if *position < acknowledged_position
-                                                    {
-                                                        *position = acknowledged_position;
+                                    let insert_ID = deserialize_u32(&buffer[5..9]);
+                                    let acknowledged_position = buffer[9];
 
-                                                        if *position > insert.content.len() as u8
+                                    if let Some(entry_index) = network.get_queue_entry(insert_ID)
+                                    {
+                                        if let Some(insert) = get_insert_by_ID(insert_ID, &set)
+                                        {
+                                            {
+                                                let entry = &mut network.send_queue[entry_index];
+                                                match entry.kind
+                                                {
+                                                    SendType::Append { ref mut position } =>
+                                                    {
+                                                        if *position < acknowledged_position
                                                         {
-                                                            *position = insert.content.len() as u8;
-                                                            println!("Received an acka with append position out of bounds.");
+                                                            *position = acknowledged_position;
+
+                                                            if *position > insert.content.len() as u8
+                                                            {
+                                                                *position = insert.content.len() as u8;
+                                                                println!("Received an acka with append position out of bounds.");
+                                                            }
                                                         }
-                                                    }
-                                                },
-                                                _ => ()
+                                                    },
+                                                    _ => ()
+                                                }
+                                            }
+
+                                            if insert.content.len() == acknowledged_position as usize
+                                            {
+                                                network.send_queue.remove(entry_index);
                                             }
                                         }
-
-                                        if insert.content.len() == acknowledged_position as usize
-                                        {
-                                            network.send_queue.remove(entry_index);
-                                        }
                                     }
                                 }
                             }
-                        }
 
-                        else if "del ".as_bytes() == &buffer[0..4]
-                        {
-                            if bytes == 4+4+1+1+4
+                            else if 'd' as u8 == buffer[4]
                             {
-                                if crc(&buffer[4..bytes-4]) == deserialize_u32(&buffer[bytes-4..bytes])
+                                if bytes == 4+1+4+1+1
                                 {
                                     if backend_state.is_some()
                                     {
-                                        let insert_ID = deserialize_u32(&buffer[4..8]);
-                                        let start_pos = buffer[8];
-                                        let end_pos = buffer[9];
+                                        let insert_ID = deserialize_u32(&buffer[5..9]);
+                                        let start_pos = buffer[9];
+                                        let end_pos = buffer[10];
 
                                         if let Some(mut insert) = get_insert_by_ID_mut(insert_ID, &mut set)
                                         {
@@ -974,7 +958,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                                 }
 
                                                 let mut ack_buffer = Vec::new();
-                                                ack_buffer.extend_from_slice("ackd".as_bytes());
+                                                ack_buffer.push('D' as u8);
                                                 serialize_u32(insert.ID, &mut ack_buffer);
                                                 ack_buffer.push(start_pos);
                                                 ack_buffer.push(end_pos);
@@ -984,29 +968,29 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                     }
                                 }
                             }
-                        }
 
-                        else if "ackd".as_bytes() == &buffer[0..4]
-                        {
-                            if bytes == 4+4+1+1
+                            else if 'D' as u8 == buffer[4]
                             {
-                                let insert_ID = deserialize_u32(&buffer[4..8]);
-                                let start_pos = buffer[8];
-                                let end_pos = buffer[9];
-
-                                if let Some(index) = network.get_queue_entry(insert_ID)
+                                if bytes == 4+1+4+1+1
                                 {
-                                    let entry = network.send_queue[index];
-                                    match entry.kind
+                                    let insert_ID = deserialize_u32(&buffer[5..9]);
+                                    let start_pos = buffer[9];
+                                    let end_pos = buffer[10];
+
+                                    if let Some(index) = network.get_queue_entry(insert_ID)
                                     {
-                                        SendType::Delete { start_pos: stored_start_pos, end_pos: stored_end_pos } =>
+                                        let entry = network.send_queue[index];
+                                        match entry.kind
                                         {
-                                            if (stored_start_pos == start_pos) & (stored_end_pos == end_pos)
+                                            SendType::Delete { start_pos: stored_start_pos, end_pos: stored_end_pos } =>
                                             {
-                                                network.send_queue.remove(index);
-                                            }
-                                        },
-                                        _ => ()
+                                                if (stored_start_pos == start_pos) & (stored_end_pos == end_pos)
+                                                {
+                                                    network.send_queue.remove(index);
+                                                }
+                                            },
+                                            _ => ()
+                                        }
                                     }
                                 }
                             }
@@ -1186,7 +1170,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
             if backend_state.is_none() & (own_port < other_port)
             {
-                network.send("inrq".as_bytes()); //retry init
+                network.send(&['r' as u8][..]); //retry init
             }
 		}
 	}).expect("Could not start the backend thread. Good bye.");
