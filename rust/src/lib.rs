@@ -9,6 +9,10 @@ use sync::spsc_255::{self, Producer, Consumer};
 
 mod tnetstring;
 
+mod crc;
+
+use crc::crc;
+
 use std::{mem, net, str, char, thread, process};
 
 use std::os::raw::{c_int, c_long, c_ulong};
@@ -25,8 +29,6 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 extern crate libc;
-extern crate crc;
-use crc::crc32::checksum_ieee; //TODO: replace this?
 
 fn deserialize_u16 (buffer: &[u8]) -> u16
 {
@@ -107,7 +109,7 @@ impl TextInsert
         }
         else
         {
-            if let Some(& ref parent) = get_insert_by_ID(other.parent, &*set) //the &mut ref parent is for converting the mutable to an immutable borrow
+            if let Some(parent) = get_insert_by_ID(other.parent, &*set)
             {
                 self.is_ancestor_of(parent, &*set)
             }
@@ -153,7 +155,7 @@ impl TextInsert
         let mut buffer: Vec<u8> = Vec::with_capacity(24+self.content.len());
         buffer.extend_from_slice("data".as_bytes());
         self.serialize(&mut buffer);
-        let checksum = checksum_ieee(&buffer[4..]);
+        let checksum = crc(&buffer[4..]);
         serialize_u32(checksum, &mut buffer);
 
         network.send(&buffer[..]);
@@ -190,7 +192,7 @@ impl TextInsert
         {
             Ok(content_string) => 
             {
-                let mut content: Vec<char> = Vec::with_capacity(254); //TODO: check that this length is not exceeded
+                let mut content: Vec<char> = Vec::with_capacity(254);
                 for character in content_string.chars()
                 {
                     content.push(character);
@@ -447,7 +449,7 @@ impl NetworkState
 
                             buffer.extend_from_slice(utf8_content.as_bytes());
 
-                            let checksum = checksum_ieee(&buffer[4..]);
+                            let checksum = crc(&buffer[4..]);
                             serialize_u32(checksum, &mut buffer);
 
                             self.send(&buffer[..]);
@@ -461,7 +463,7 @@ impl NetworkState
                         buffer.push(start_pos);
                         buffer.push(end_pos);
 
-                        let checksum = checksum_ieee(&buffer[4..]);
+                        let checksum = crc(&buffer[4..]);
                         serialize_u32(checksum, &mut buffer);
 
                         self.send(&buffer[..]);
@@ -611,7 +613,7 @@ fn render_text_internal(set: &TextInsertSet, parentID: u32, charPos: u8, text_bu
 
         for (position, character) in insert.content.iter().enumerate()
         {
-            if (Some(insert.ID) == text_buffer.cursor_ID) & (Some(position as u8) == text_buffer.cursor_charPos) //TODO: maybe keep information on where the cursor is attached.
+            if (Some(insert.ID) == text_buffer.cursor_ID) & (Some(position as u8) == text_buffer.cursor_charPos) //NOTE: maybe keep information on where the cursor is attached. would only be necessary for deleting to the right, normal backspace and insertion should be attached to the left.
             {
                 text_buffer.cursor_globalPos = text_buffer.text.len();
             }
@@ -762,7 +764,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                             {
                                 if bytes == 4+4+4+4
                                 {
-                                    if checksum_ieee(&buffer[0..12]) == deserialize_u32(&buffer[12..16])
+                                    if crc(&buffer[0..12]) == deserialize_u32(&buffer[12..16])
                                     {
                                         let start_ID = deserialize_u32(&buffer[4..8]);
                                         let end_ID = deserialize_u32(&buffer[8..12]);
@@ -784,16 +786,16 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                     send_buffer.extend_from_slice("init".as_bytes());
                                     serialize_u32(end_ID+1, &mut send_buffer);
                                     serialize_u32(end_ID+1025, &mut send_buffer);
-                                    let checksum: u32 = checksum_ieee(&send_buffer[..]);
+                                    let checksum: u32 = crc(&send_buffer[..]);
                                     serialize_u32(checksum, &mut send_buffer);
                                     network.send(&send_buffer[..]);
                                 }
                             }
                         }
 
-                        else if "data".as_bytes() == &buffer[0..4] //TODO: check checksum...
+                        else if "data".as_bytes() == &buffer[0..4]
                         {
-                            if checksum_ieee(&buffer[4..bytes-4]) == deserialize_u32(&buffer[bytes-4..bytes])
+                            if crc(&buffer[4..bytes-4]) == deserialize_u32(&buffer[bytes-4..bytes])
                             {
                                 println!("Received insert.");
                                 match backend_state
@@ -855,7 +857,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                         {
                             if bytes >= 4+4+1+4
                             {
-                                if checksum_ieee(&buffer[4..bytes-4]) == deserialize_u32(&buffer[bytes-4..bytes])
+                                if crc(&buffer[4..bytes-4]) == deserialize_u32(&buffer[bytes-4..bytes])
                                 {
                                     if backend_state.is_some()
                                     {
@@ -953,7 +955,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                         {
                             if bytes == 4+4+1+1+4
                             {
-                                if checksum_ieee(&buffer[4..bytes-4]) == deserialize_u32(&buffer[bytes-4..bytes])
+                                if crc(&buffer[4..bytes-4]) == deserialize_u32(&buffer[bytes-4..bytes])
                                 {
                                     if backend_state.is_some()
                                     {
