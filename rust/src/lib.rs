@@ -825,11 +825,6 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                                     ack_buffer.push(insert.get_number_of_deleted_chars());
                                                     network.send(&ack_buffer[..]);
                                                     println!("Deserialized insert.");
-
-                                                    if new_insert_created
-                                                    {
-                                                        network.send_acka(insert.ID, insert.content.len() as u8); //TODO: remove
-                                                    }
                                                 },
                                                 None => ()
                                             }
@@ -1046,10 +1041,6 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                 //message interpretation code goes here
                             }
                         }
-                        
-                        else
-                        {
-                            println!("CRC fail!");
                     }
                 },
 				Err(_) => ()
