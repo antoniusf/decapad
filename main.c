@@ -498,11 +498,13 @@ update_login_buffer (TextBuffer *buffer, DynamicArray_uint32 *username, DynamicA
 void ahead_insert_letter ( TextBuffer *buffer, Uint32 letter )
 {
     insertIntoDynamicArray_uint32(&buffer->text, letter, buffer->ahead_cursor);
+    insertIntoDynamicArray_uint32(&buffer->author_table, author_ID, buffer->ahead_cursor);
 }
 
 void ahead_delete_letter ( TextBuffer *buffer )
 {
     deleteFromDynamicArray_uint32(&buffer->text, buffer->ahead_cursor);
+    deleteFromDynamicArray_uint32(&buffer->author_table, buffer->ahead_cursor);
 }
 
 
@@ -787,7 +789,10 @@ int main (void)
 
                         case SDLK_RIGHT:
                         {
-                            rust_blocking_sync_text(ffi_box_ptr);
+                            if (program_state == STATE_PAD)
+                            {
+                                rust_blocking_sync_text(ffi_box_ptr);
+                            }
 
                             if (e.key.keysym.mod & KMOD_SHIFT) //seek to next word
                             {
@@ -808,13 +813,20 @@ int main (void)
                             }
 
                             buffer.ahead_cursor = buffer.cursor;
-                            rust_send_cursor(buffer.cursor, ffi_box_ptr);
-                            rust_sync_unlock(ffi_box_ptr);
+
+                            if (program_state == STATE_PAD)
+                            {
+                                rust_send_cursor(buffer.cursor, ffi_box_ptr);
+                                rust_sync_unlock(ffi_box_ptr);
+                            }
                         } break;
 
                         case SDLK_LEFT:
                         {
-                            rust_blocking_sync_text(ffi_box_ptr);
+                            if (program_state == STATE_PAD)
+                            {
+                                rust_blocking_sync_text(ffi_box_ptr);
+                            }
 
                             if (e.key.keysym.mod & KMOD_SHIFT) //seek to previous word
                             {
@@ -833,13 +845,19 @@ int main (void)
                             }
 
                             buffer.ahead_cursor = buffer.cursor;
-                            rust_send_cursor(buffer.cursor, ffi_box_ptr);
-                            rust_sync_unlock(ffi_box_ptr);
+                            if (program_state == STATE_PAD)
+                            {
+                                rust_send_cursor(buffer.cursor, ffi_box_ptr);
+                                rust_sync_unlock(ffi_box_ptr);
+                            }
                         } break;
 
                         case SDLK_UP:
                         {
-                            rust_blocking_sync_text(ffi_box_ptr);
+                            if (program_state == STATE_PAD)
+                            {
+                                rust_blocking_sync_text(ffi_box_ptr);
+                            }
 
                             int i;
                             int first = 0;
@@ -860,20 +878,29 @@ int main (void)
 
                             buffer.cursor = i;
                             buffer.ahead_cursor = buffer.cursor;
-                            rust_send_cursor(buffer.cursor, ffi_box_ptr);
-                            rust_sync_unlock(ffi_box_ptr);
+                            if (program_state == STATE_PAD)
+                            {
+                                rust_send_cursor(buffer.cursor, ffi_box_ptr);
+                                rust_sync_unlock(ffi_box_ptr);
+                            }
                         } break;
 
                         case SDLK_DOWN:
                         {
-                            rust_blocking_sync_text(ffi_box_ptr);
+                            if (program_state == STATE_PAD)
+                            {
+                                rust_blocking_sync_text(ffi_box_ptr);
+                            }
 
                             int i;
                             for (i=buffer.cursor; (i < buffer.text.length-1) && (buffer.text.array[i] != 10); i++);
                             buffer.cursor = i+1;
                             buffer.ahead_cursor = buffer.cursor;
-                            rust_send_cursor(buffer.cursor, ffi_box_ptr);
-                            rust_sync_unlock(ffi_box_ptr);
+                            if (program_state == STATE_PAD)
+                            {
+                                rust_send_cursor(buffer.cursor, ffi_box_ptr);
+                                rust_sync_unlock(ffi_box_ptr);
+                            }
                         } break;
 
                         case SDLK_v:
@@ -1015,10 +1042,11 @@ int main (void)
             }
         }
 
-        if ((click_x != -1) || (click_y != -1))
+        if ( (program_state == STATE_PAD) && ((click_x != -1) || (click_y != -1)) )
         {
             rust_blocking_sync_text(ffi_box_ptr);
         }
+
         if (blink_timer < 128)
         {
             draw_text(&buffer, buffer.text.array, pixels, 1, fontface, click_x, click_y);
@@ -1027,13 +1055,15 @@ int main (void)
         {
             draw_text(&buffer, buffer.text.array, pixels, 0, fontface, click_x, click_y);
         }
+
         buffer.ahead_cursor = buffer.cursor;
-        if ((click_x != -1) || (click_y != -1))
+
+        if ( (program_state == STATE_PAD) && ((click_x != -1) || (click_y != -1)) )
         {
             rust_send_cursor(buffer.cursor, ffi_box_ptr);
             rust_sync_unlock(ffi_box_ptr);
-            click_x = click_y = -1;
         }
+        click_x = click_y = -1;
 
         //SDL_UpdateTexture(texture, NULL, pixels, window_width*sizeof(Uint32));
         SDL_UnlockTexture(texture);
