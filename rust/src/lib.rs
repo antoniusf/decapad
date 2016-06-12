@@ -334,7 +334,7 @@ impl NetworkState
         self.cheap_counter += 1;
 
         let mut augmented_message = Vec::with_capacity(data.len()+1);
-        augmented_message.push('c' as u8);
+        augmented_message.push('m' as u8);
         serialize_u32(message_id, &mut augmented_message);
         augmented_message.extend_from_slice(data);
         self.cheap_queue.push_back((message_id, augmented_message));
@@ -1010,17 +1010,17 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                 }
                             }
 
-                            else if buffer[4] == 'c' as u8
+                            else if buffer[4] == 'm' as u8
                             {
                                 let message_id = deserialize_u32(&buffer[5..9]);
                                 let mut ack = Vec::with_capacity(5);
-                                ack.push('C' as u8);
+                                ack.push('M' as u8);
                                 serialize_u32(message_id, &mut ack);
 
                                 network.send(&ack[..]);
                             }
 
-                            else if buffer[4] == 'C' as u8
+                            else if buffer[4] == 'M' as u8
                             {
                                 let acknowledged_message_id = deserialize_u32(&buffer[5..9]);
                                 let mut delete_index = None;
