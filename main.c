@@ -895,6 +895,11 @@ int main (void)
                             int i;
                             for (i=buffer.cursor; (i < buffer.text.length-1) && (buffer.text.array[i] != 10); i++);
                             buffer.cursor = i+1;
+                            if (buffer.cursor > buffer.text.length)
+                            {
+                                buffer.cursor = buffer.text.length;
+                            }
+
                             buffer.ahead_cursor = buffer.cursor;
                             if (program_state == STATE_PAD)
                             {
