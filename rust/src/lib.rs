@@ -735,9 +735,8 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
         ;
 
         //network
-		let mut own_socket = net::UdpSocket::bind(("127.0.0.1", own_port)).expect("Socket fail!"); //TODO: set nonblocking (this is only possible in rusts nightly right now)
-		own_socket.set_read_timeout(Some(Duration::new(0, 1)));
-		own_socket.set_write_timeout(Some(Duration::new(0, 1))); //I hope this works as nonblocking for now
+		let mut own_socket = net::UdpSocket::bind(("127.0.0.1", own_port)).expect("Socket fail!");
+        own_socket.set_nonblocking(true);
         let mut network =
             NetworkState
             {
