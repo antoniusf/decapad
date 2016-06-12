@@ -509,17 +509,12 @@ pub struct TextBuffer
 {
     cursor: c_int,
     ahead_cursor: c_int,
-    update_hint_cursor_ID: i64,
-    update_hint_cursor_charPos: i16,
     x: c_int,
     line_y: c_int,
     y_padding: c_int,
     line: c_int,
-    activeInsertID: u32,
     text: DynamicArray_uint32,
-    ID_table: DynamicArray_uint32,
     author_table: DynamicArray_uint32,
-    charPos_table: DynamicArray_uint32
 }
 
 pub struct ThreadPointerWrapper

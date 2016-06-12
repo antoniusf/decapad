@@ -35,17 +35,12 @@ struct TextBuffer
 {
     int cursor;
     int ahead_cursor;
-    Sint64 update_hint_cursor_ID; //TODO: Maybe migrate to a c++ compiler so we can have default arguments instead of this
-    Sint16 update_hint_cursor_charPos;
     int x;
     int line_y;
     int y_padding;
     int line;
-    insertID activeInsertID;
     DynamicArray_uint32 text;
-    DynamicArray_uint32 ID_table;
     DynamicArray_uint32 author_table;
-    DynamicArray_uint32 charPos_table;
 };
 typedef struct TextBuffer TextBuffer;
 
@@ -980,132 +975,132 @@ rust_sync_unlock (void *ffi_box_ptr);
 void
 rust_send_cursor (Uint32 cursor, void *ffi_box_ptr);
 
-void
-render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buffer, Uint32 cursor_ID, Uint8 cursor_charPos, DynamicArray_uint32 *ID_stack)
-//buffer.text needs to be initialized; buffer.ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character, buffer.charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
-{
-    int i;
-    DynamicArray_ulong IDs;
-    initDynamicArray_ulong(&IDs);
+//void
+//render_text (TextInsertSet *set, Uint32 parentID, Uint8 charPos, TextBuffer *buffer, Uint32 cursor_ID, Uint8 cursor_charPos, DynamicArray_uint32 *ID_stack)
+////buffer.text needs to be initialized; buffer.ID_table (needs to be initialized too) stores the ID of the insertion mark which contains each character, buffer.charPos_table stores the index of the character within its insertion mark. TODO: this is terribly inefficient with memory. fix sometime.
+//{
+//    int i;
+//    DynamicArray_ulong IDs;
+//    initDynamicArray_ulong(&IDs);
+//
+//    for (i=0; i<set->length; i++)
+//    {
+//        TextInsert insert = *(set->array+i);
+//        if (insert.parentID == parentID && insert.charPos == charPos)
+//        {
+//            int j;
+//            int valid = 1;
+//            for (j=0; j<ID_stack->length; j++)
+//            {
+//                if (ID_stack->array[j] == insert.selfID)
+//                {
+//                    printf("render_text has detected a cyclic dependency between inserts. This should never happen, as it does not conform to the protocol specification.\n");
+//                    valid = 0;
+//                }
+//            }
+//            if (valid)
+//            {
+//                addToDynamicArray_ulong(&IDs, insert.selfID);
+//            }
+//        }
+//    }
+//
+//    //sort all the inserts
+//    if (IDs.length > 0)
+//    {
+//        quicksort(IDs.array, 0, IDs.length-1);
+//    }
+//
+//
+//    //render them in order
+//
+//    for (i=0; i<IDs.length; i++)
+//    {
+//        //get insert
+//        TextInsert *current_insert = set->array+getInsertByID(set, IDs.array[i]);
+//
+//        addToDynamicArray_uint32(ID_stack, current_insert->selfID); //push
+//
+//        //draw it
+//        int pos;
+//        for (pos=0; pos<current_insert->length; pos++)
+//        {
+//            //render the inserts before this character position
+//            render_text(set, current_insert->selfID, pos, buffer, cursor_ID, cursor_charPos, ID_stack);
+//
+//            //stick the appropriate letter on the back
+//            if (current_insert->content[pos] != 127)
+//            {
+//                addToDynamicArray_uint32(&buffer->text, current_insert->content[pos]);
+//                addToDynamicArray_uint32(&buffer->ID_table, current_insert->selfID);
+//                addToDynamicArray_uint32(&buffer->author_table, current_insert->author);
+//                addToDynamicArray_uint32(&buffer->charPos_table, pos);
+//            }
+//
+//            //check for the cursor
+//            if ( ( current_insert->selfID == cursor_ID ) && ( pos == cursor_charPos ) )
+//            {
+//                buffer->cursor = buffer->text.length;
+//            }
+//        }
+//
+//        render_text(set, current_insert->selfID, current_insert->length, buffer, cursor_ID, cursor_charPos, ID_stack);
+//
+//        ID_stack->length--; //pop
+//    }
+//
+//    free(IDs.array);
+//}
 
-    for (i=0; i<set->length; i++)
-    {
-        TextInsert insert = *(set->array+i);
-        if (insert.parentID == parentID && insert.charPos == charPos)
-        {
-            int j;
-            int valid = 1;
-            for (j=0; j<ID_stack->length; j++)
-            {
-                if (ID_stack->array[j] == insert.selfID)
-                {
-                    printf("render_text has detected a cyclic dependency between inserts. This should never happen, as it does not conform to the protocol specification.\n");
-                    valid = 0;
-                }
-            }
-            if (valid)
-            {
-                addToDynamicArray_ulong(&IDs, insert.selfID);
-            }
-        }
-    }
-
-    //sort all the inserts
-    if (IDs.length > 0)
-    {
-        quicksort(IDs.array, 0, IDs.length-1);
-    }
-
-
-    //render them in order
-
-    for (i=0; i<IDs.length; i++)
-    {
-        //get insert
-        TextInsert *current_insert = set->array+getInsertByID(set, IDs.array[i]);
-
-        addToDynamicArray_uint32(ID_stack, current_insert->selfID); //push
-
-        //draw it
-        int pos;
-        for (pos=0; pos<current_insert->length; pos++)
-        {
-            //render the inserts before this character position
-            render_text(set, current_insert->selfID, pos, buffer, cursor_ID, cursor_charPos, ID_stack);
-
-            //stick the appropriate letter on the back
-            if (current_insert->content[pos] != 127)
-            {
-                addToDynamicArray_uint32(&buffer->text, current_insert->content[pos]);
-                addToDynamicArray_uint32(&buffer->ID_table, current_insert->selfID);
-                addToDynamicArray_uint32(&buffer->author_table, current_insert->author);
-                addToDynamicArray_uint32(&buffer->charPos_table, pos);
-            }
-
-            //check for the cursor
-            if ( ( current_insert->selfID == cursor_ID ) && ( pos == cursor_charPos ) )
-            {
-                buffer->cursor = buffer->text.length;
-            }
-        }
-
-        render_text(set, current_insert->selfID, current_insert->length, buffer, cursor_ID, cursor_charPos, ID_stack);
-
-        ID_stack->length--; //pop
-    }
-
-    free(IDs.array);
-}
-
-void
-update_buffer (TextInsertSet *set, TextBuffer *buffer)
-{
-    //convert cursor to (ID, charPos) format
-    Uint32 cursor_ID;
-    Uint8 cursor_charPos;
-
-    if (buffer->update_hint_cursor_ID >= 0)
-    {
-        cursor_ID = buffer->update_hint_cursor_ID;
-        cursor_charPos = buffer->update_hint_cursor_charPos;
-        buffer->update_hint_cursor_ID = -1;
-        buffer->update_hint_cursor_charPos = -1;
-    }
-
-    else
-    {
-        if (buffer->cursor > 0)
-        {
-            cursor_ID = buffer->ID_table.array[buffer->cursor - 1];
-            cursor_charPos = buffer->charPos_table.array[buffer->cursor - 1];
-        }
-
-        else
-        {
-            cursor_ID = 0;
-            cursor_charPos = 0;
-        }
-    }
-
-    //reset all relevant arrays
-    buffer->text.length = 0;
-    buffer->ID_table.length = 0;
-    buffer->author_table.length = 0;
-    buffer->charPos_table.length = 0;
-
-    DynamicArray_uint32 ID_stack;
-    initDynamicArray_uint32(&ID_stack);
-
-    //render_text(set, 0, 0, buffer, cursor_ID, cursor_charPos);
-    render_text(set, 0, 0, buffer, cursor_ID, cursor_charPos, &ID_stack);
-
-    if (cursor_ID == 0)
-    {
-        buffer->cursor = 0;
-    }
-
-    free(ID_stack.array);
-}
+//void
+//update_buffer (TextInsertSet *set, TextBuffer *buffer)
+//{
+//    //convert cursor to (ID, charPos) format
+//    Uint32 cursor_ID;
+//    Uint8 cursor_charPos;
+//
+//    if (buffer->update_hint_cursor_ID >= 0)
+//    {
+//        cursor_ID = buffer->update_hint_cursor_ID;
+//        cursor_charPos = buffer->update_hint_cursor_charPos;
+//        buffer->update_hint_cursor_ID = -1;
+//        buffer->update_hint_cursor_charPos = -1;
+//    }
+//
+//    else
+//    {
+//        if (buffer->cursor > 0)
+//        {
+//            cursor_ID = buffer->ID_table.array[buffer->cursor - 1];
+//            cursor_charPos = buffer->charPos_table.array[buffer->cursor - 1];
+//        }
+//
+//        else
+//        {
+//            cursor_ID = 0;
+//            cursor_charPos = 0;
+//        }
+//    }
+//
+//    //reset all relevant arrays
+//    buffer->text.length = 0;
+//    buffer->ID_table.length = 0;
+//    buffer->author_table.length = 0;
+//    buffer->charPos_table.length = 0;
+//
+//    DynamicArray_uint32 ID_stack;
+//    initDynamicArray_uint32(&ID_stack);
+//
+//    //render_text(set, 0, 0, buffer, cursor_ID, cursor_charPos);
+//    render_text(set, 0, 0, buffer, cursor_ID, cursor_charPos, &ID_stack);
+//
+//    if (cursor_ID == 0)
+//    {
+//        buffer->cursor = 0;
+//    }
+//
+//    free(ID_stack.array);
+//}
 
 void
 update_login_buffer (TextBuffer *buffer, DynamicArray_uint32 *username, DynamicArray_uint32 *password, DynamicArray_uint32 *pad_with)
@@ -1145,129 +1140,129 @@ is_a_ancestor_of_b (TextInsertSet *set, TextInsert *a, TextInsert *b)
     return 0;
 }
 
-int
-insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_data *network)
-{
-
-    TextInsert *active_insert = NULL;
-    if (buffer->activeInsertID)
-    {
-        active_insert = set->array + getInsertByID(set, buffer->activeInsertID);
-    }
-
-    if ( (buffer->activeInsertID) && (active_insert->length < 255) )
-    {
-        active_insert->content = realloc(active_insert->content, (active_insert->length+1)*4);
-        active_insert->content[active_insert->length] = letter;
-        active_insert->length++;
-
-        enqueue_insert(active_insert, network);
-        network->send_now = 1;
-
-        buffer->update_hint_cursor_ID = buffer->activeInsertID;
-        buffer->update_hint_cursor_charPos = active_insert->length - 1;
-    }
-
-    else
-    {
-        buffer->activeInsertID = 0;
-
-        int pos = buffer->cursor;
-        Uint32 insert_ID;
-        Uint8 charPos;
-        if ( pos == 0 )
-        {
-            if (set->length == 0)
-            {
-                insert_ID = 0;
-                charPos = 0;
-            }
-            else
-            {
-                insert_ID = buffer->ID_table.array[pos];
-                charPos = buffer->charPos_table.array[pos];
-            }
-        }
-
-        else
-        {
-            if (pos == buffer->ID_table.length )
-            {
-                insert_ID = buffer->ID_table.array[pos-1];
-                charPos = buffer->charPos_table.array[pos-1] + 1;
-            }
-
-            else
-            {
-
-                insertID insert_1_ID = buffer->ID_table.array[pos-1];
-                insertID insert_2_ID = buffer->ID_table.array[pos];
-                TextInsert *insert_1 = set->array + getInsertByID(set, insert_1_ID);
-                TextInsert *insert_2 = set->array + getInsertByID(set, insert_2_ID);
-
-                if ( is_a_ancestor_of_b (set, insert_1, insert_2) )
-                {
-                    insert_ID = insert_2->selfID;
-                    charPos = buffer->charPos_table.array[pos];
-                }
-                else
-                {
-                    insert_ID = insert_1->selfID;
-                    charPos = buffer->charPos_table.array[pos-1] + 1;
-                }
-            }
-        }
-
-
-        TextInsert new_insert;
-        new_insert.selfID = ID_start++;
-        if (ID_end < ID_start)
-        {
-            printf("Ran out of IDs!!!\n");
-            exit(1);
-        }
-        new_insert.parentID = insert_ID;
-        new_insert.author = author_ID;
-        new_insert.charPos = charPos;
-        new_insert.lock = 0;
-        new_insert.length = 1;
-        new_insert.content = malloc(4);
-        new_insert.content[0] = letter;
-
-        addToTextInsertSet(set, new_insert);
-        TextInsert *new_insert_pointer = set->array + set->length-1; //NOTE: not thread safe!
-        buffer->activeInsertID = new_insert.selfID;
-        
-        enqueue_insert(new_insert_pointer, network);
-        network->send_now = 1;
-
-        buffer->update_hint_cursor_ID = new_insert.selfID;
-        buffer->update_hint_cursor_charPos = 0;
-
-    }
-
-    update_buffer(set, buffer);
-
-    return 0;
-}
-
-int
-delete_letter ( TextInsertSet *set, TextBuffer *buffer, network_data *network )
-{
-    if (buffer->cursor < buffer->ID_table.length)
-    {
-        insertID insert_ID = buffer->ID_table.array[buffer->cursor];
-        TextInsert *insert = set->array + getInsertByID(set, insert_ID);
-        Uint8 inner_pos = buffer->charPos_table.array[buffer->cursor];
-
-        insert->content[inner_pos] = 127;
-
-        enqueue_insert(insert, network);
-        network->send_now = 1;
-    }
-    update_buffer(set, buffer);
-    return 0;
-}
+//int
+//insert_letter (TextInsertSet *set, TextBuffer *buffer, Uint32 letter, network_data *network)
+//{
+//
+//    TextInsert *active_insert = NULL;
+//    if (buffer->activeInsertID)
+//    {
+//        active_insert = set->array + getInsertByID(set, buffer->activeInsertID);
+//    }
+//
+//    if ( (buffer->activeInsertID) && (active_insert->length < 255) )
+//    {
+//        active_insert->content = realloc(active_insert->content, (active_insert->length+1)*4);
+//        active_insert->content[active_insert->length] = letter;
+//        active_insert->length++;
+//
+//        enqueue_insert(active_insert, network);
+//        network->send_now = 1;
+//
+//        buffer->update_hint_cursor_ID = buffer->activeInsertID;
+//        buffer->update_hint_cursor_charPos = active_insert->length - 1;
+//    }
+//
+//    else
+//    {
+//        buffer->activeInsertID = 0;
+//
+//        int pos = buffer->cursor;
+//        Uint32 insert_ID;
+//        Uint8 charPos;
+//        if ( pos == 0 )
+//        {
+//            if (set->length == 0)
+//            {
+//                insert_ID = 0;
+//                charPos = 0;
+//            }
+//            else
+//            {
+//                insert_ID = buffer->ID_table.array[pos];
+//                charPos = buffer->charPos_table.array[pos];
+//            }
+//        }
+//
+//        else
+//        {
+//            if (pos == buffer->ID_table.length )
+//            {
+//                insert_ID = buffer->ID_table.array[pos-1];
+//                charPos = buffer->charPos_table.array[pos-1] + 1;
+//            }
+//
+//            else
+//            {
+//
+//                insertID insert_1_ID = buffer->ID_table.array[pos-1];
+//                insertID insert_2_ID = buffer->ID_table.array[pos];
+//                TextInsert *insert_1 = set->array + getInsertByID(set, insert_1_ID);
+//                TextInsert *insert_2 = set->array + getInsertByID(set, insert_2_ID);
+//
+//                if ( is_a_ancestor_of_b (set, insert_1, insert_2) )
+//                {
+//                    insert_ID = insert_2->selfID;
+//                    charPos = buffer->charPos_table.array[pos];
+//                }
+//                else
+//                {
+//                    insert_ID = insert_1->selfID;
+//                    charPos = buffer->charPos_table.array[pos-1] + 1;
+//                }
+//            }
+//        }
+//
+//
+//        TextInsert new_insert;
+//        new_insert.selfID = ID_start++;
+//        if (ID_end < ID_start)
+//        {
+//            printf("Ran out of IDs!!!\n");
+//            exit(1);
+//        }
+//        new_insert.parentID = insert_ID;
+//        new_insert.author = author_ID;
+//        new_insert.charPos = charPos;
+//        new_insert.lock = 0;
+//        new_insert.length = 1;
+//        new_insert.content = malloc(4);
+//        new_insert.content[0] = letter;
+//
+//        addToTextInsertSet(set, new_insert);
+//        TextInsert *new_insert_pointer = set->array + set->length-1; //NOTE: not thread safe!
+//        buffer->activeInsertID = new_insert.selfID;
+//        
+//        enqueue_insert(new_insert_pointer, network);
+//        network->send_now = 1;
+//
+//        buffer->update_hint_cursor_ID = new_insert.selfID;
+//        buffer->update_hint_cursor_charPos = 0;
+//
+//    }
+//
+//    update_buffer(set, buffer);
+//
+//    return 0;
+//}
+//
+//int
+//delete_letter ( TextInsertSet *set, TextBuffer *buffer, network_data *network )
+//{
+//    if (buffer->cursor < buffer->ID_table.length)
+//    {
+//        insertID insert_ID = buffer->ID_table.array[buffer->cursor];
+//        TextInsert *insert = set->array + getInsertByID(set, insert_ID);
+//        Uint8 inner_pos = buffer->charPos_table.array[buffer->cursor];
+//
+//        insert->content[inner_pos] = 127;
+//
+//        enqueue_insert(insert, network);
+//        network->send_now = 1;
+//    }
+//    update_buffer(set, buffer);
+//    return 0;
+//}
 
 
 void ahead_insert_letter ( TextBuffer *buffer, Uint32 letter )
@@ -1377,11 +1372,6 @@ int main (void)
 
     int error;
 
-    //CRC table computation
-    crc8_0x97_fill_table();
-
-    //fifo setup
-
     //this ID range is only for the first client...
     author_ID = ID_start = 1;
     ID_end = 1024;
@@ -1441,24 +1431,16 @@ int main (void)
 
 
     //Logic
-    TextInsertSet set;
-    initTextInsertSet(&set);
-
     TextBuffer buffer;
     buffer.cursor = 0;
     buffer.ahead_cursor = 0;
-    buffer.update_hint_cursor_ID = -1;
-    buffer.update_hint_cursor_charPos = -1;
-    buffer.activeInsertID = 0;
     buffer.x = 10;
     buffer.line_y = 0;
     buffer.y_padding = 10;
     buffer.line = 0;
 
     initDynamicArray_uint32(&buffer.text);
-    initDynamicArray_uint32(&buffer.ID_table);
     initDynamicArray_uint32(&buffer.author_table);
-    initDynamicArray_uint32(&buffer.charPos_table);
 
     program_state = STATE_LOGIN;
     add_string_to_utf32_text(&buffer.text, "username: \npassword: \npad with: ");
@@ -1545,9 +1527,6 @@ int main (void)
                                     buffer.cursor = buffer.ahead_cursor = 0;
                                     buffer.text.length = 0;
                                     program_state = STATE_PAD;
-
-                                    load_document(&set, &pad_with);
-                                    update_buffer(&set, &buffer);
                                 }
                                 else
                                 {
@@ -1598,7 +1577,6 @@ int main (void)
                                 }
                             }
 
-                            buffer.activeInsertID = 0;
                             buffer.ahead_cursor = buffer.cursor;
                             rust_send_cursor(buffer.cursor, ffi_box_ptr);
                             rust_sync_unlock(ffi_box_ptr);
@@ -1625,7 +1603,6 @@ int main (void)
                             }
 
                             buffer.ahead_cursor = buffer.cursor;
-                            buffer.activeInsertID = 0;
                             rust_send_cursor(buffer.cursor, ffi_box_ptr);
                             rust_sync_unlock(ffi_box_ptr);
                         } break;
@@ -1653,7 +1630,6 @@ int main (void)
 
                             buffer.cursor = i;
                             buffer.ahead_cursor = buffer.cursor;
-                            buffer.activeInsertID = 0;
                             rust_send_cursor(buffer.cursor, ffi_box_ptr);
                             rust_sync_unlock(ffi_box_ptr);
                         } break;
@@ -1666,7 +1642,6 @@ int main (void)
                             for (i=buffer.cursor; (i < buffer.text.length-1) && (buffer.text.array[i] != 10); i++);
                             buffer.cursor = i+1;
                             buffer.ahead_cursor = buffer.cursor;
-                            buffer.activeInsertID = 0;
                             rust_send_cursor(buffer.cursor, ffi_box_ptr);
                             rust_sync_unlock(ffi_box_ptr);
                         } break;
@@ -1719,7 +1694,6 @@ int main (void)
                     click_x = e.button.x;
                     click_y = e.button.y;
                     blink_timer = 0;
-                    buffer.activeInsertID = 0;
                 } break;
 
                 case SDL_MOUSEWHEEL:
@@ -1976,8 +1950,6 @@ int main (void)
 
     }
 
-    save_document(&set, &pad_with);
-
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
@@ -1987,15 +1959,7 @@ int main (void)
     rust_text_input(&quit_signal[0], 4, ffi_box_ptr);
 
     free(buffer.text.array);
-    free(buffer.ID_table.array);
-    free(buffer.charPos_table.array);
-
-    for (i=0; i<set.length; i++)
-    {
-        free( set.array[i].content );
-    }
-
-    free(set.array);
+    free(buffer.author_table.array);
 
     FT_Done_FreeType(ft_library);
 
