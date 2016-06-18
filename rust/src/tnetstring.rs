@@ -1,7 +1,7 @@
 use std::str;
 
 #[derive(Debug, PartialEq, Eq)]
-enum Data
+pub enum Data
 {
     Bool (bool),
     Integer (isize),
@@ -35,7 +35,7 @@ fn int_to_string (mut value: isize) -> Vec<u8>
     return value_string;
 }
 
-fn encode (data: &Data, result: &mut Vec<u8>)
+pub fn encode (data: &Data, result: &mut Vec<u8>)
 {
     match *data
     {
@@ -93,7 +93,7 @@ fn encode (data: &Data, result: &mut Vec<u8>)
     }
 }
 
-fn encode_string_dict ( dict: Vec<(&str, Data)>, result: &mut Vec<u8> )
+pub fn encode_string_dict ( dict: Vec<(&str, Data)>, result: &mut Vec<u8> )
 {
 
     let mut tnet_dict = Vec::new();
@@ -162,7 +162,7 @@ fn test_decode_integer()
     assert!(*test == "blablafoo".as_bytes());
 }
 
-fn decode (string: &mut &[u8]) -> Result<Data, &'static str>
+pub fn decode (string: &mut &[u8]) -> Result<Data, &'static str>
 {
     let length: isize;
     match decode_integer(string, ':' as u8)
@@ -283,7 +283,7 @@ fn test_encode_decode()
     println!("{:?}", decode(&mut &encoded_data[..]));
 }
 
-fn get_field<'a, 'b> (name: &'a str, data: &'b Data) -> Option<&'b Data>
+pub fn get_field<'a, 'b> (name: &'a str, data: &'b Data) -> Option<&'b Data>
 {
 
     if let &Data::Dict(ref dict) = data

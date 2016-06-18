@@ -767,37 +767,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                         let checkvalue = deserialize_u32(&buffer[0..4]);
                         if crc(&buffer[4..bytes]) == checkvalue
                         {
-                            if 'R' as u8 == buffer[4]
-                            {
-                                if backend_state.is_none()
-                                {
-                                    if bytes == 4+1+4+4
-                                    {
-                                        let start_ID = deserialize_u32(&buffer[5..9]);
-                                        let end_ID = deserialize_u32(&buffer[9..13]);
-                                        backend_state = Some(ProtocolBackendState { start_ID: start_ID, end_ID: end_ID, author_ID: start_ID } );
-                                    }
-                                }
-                            }
-
-                            else if 'r' as u8 == buffer[4]
-                            {
-                                //send init
-                                match backend_state
-                                {
-                                    None => backend_state = Some(ProtocolBackendState { start_ID: 1, end_ID: 1025, author_ID: 1 } ), //TODO: find a better scheme for deciding initialization
-                                    Some(ProtocolBackendState {end_ID, ..}) =>
-                                    {
-                                        let mut send_buffer: Vec<u8> = Vec::new();
-                                        send_buffer.push('R' as u8);
-                                        serialize_u32(end_ID+1, &mut send_buffer);
-                                        serialize_u32(end_ID+1025, &mut send_buffer);
-                                        network.send(&send_buffer[..]);
-                                    }
-                                }
-                            }
-
-                            else if 'i' as u8 == buffer[4]
+                            if 'i' as u8 == buffer[4]
                             {
                                 if bytes >= 20
                                 {
@@ -1004,6 +974,36 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                 }
                             }
 
+                            //if 'R' as u8 == buffer[4]
+                            //{
+                            //    if backend_state.is_none()
+                            //    {
+                            //        if bytes == 4+1+4+4
+                            //        {
+                            //            let start_ID = deserialize_u32(&buffer[5..9]);
+                            //            let end_ID = deserialize_u32(&buffer[9..13]);
+                            //            backend_state = Some(ProtocolBackendState { start_ID: start_ID, end_ID: end_ID, author_ID: start_ID } );
+                            //        }
+                            //    }
+                            //}
+
+                            //else if 'r' as u8 == buffer[4]
+                            //{
+                            //    //send init
+                            //    match backend_state
+                            //    {
+                            //        None => backend_state = Some(ProtocolBackendState { start_ID: 1, end_ID: 1025, author_ID: 1 } ), //TODO: find a better scheme for deciding initialization
+                            //        Some(ProtocolBackendState {end_ID, ..}) =>
+                            //        {
+                            //            let mut send_buffer: Vec<u8> = Vec::new();
+                            //            send_buffer.push('R' as u8);
+                            //            serialize_u32(end_ID+1, &mut send_buffer);
+                            //            serialize_u32(end_ID+1025, &mut send_buffer);
+                            //            network.send(&send_buffer[..]);
+                            //        }
+                            //    }
+                            //}
+
                             else if buffer[4] == 'm' as u8
                             {
                                 let message_id = deserialize_u32(&buffer[5..9]);
@@ -1012,6 +1012,48 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                 serialize_u32(message_id, &mut ack);
 
                                 network.send(&ack[..]);
+
+                                if let Ok(data) = tnetstring::decode(&mut &buffer[9..bytes])
+                                {
+                                    if let Some(&tnetstring::Data::String(ref message_type)) = tnetstring::get_field("type", &data)
+                                    {
+                                        let message_type = &message_type[..];
+
+                                        if message_type == "Init request"
+                                        {
+                                            match backend_state
+                                            {
+                                                None => backend_state = Some(ProtocolBackendState { start_ID: 1, end_ID: 1025, author_ID: 1 }), //TODO: find a better scheme for deciding initialization
+                                                Some(ProtocolBackendState { end_ID, .. }) =>
+                                                {
+                                                    let mut answer = Vec::new();
+                                                    tnetstring::encode_string_dict( vec![
+                                                                                        ("type", tnetstring::Data::String("Init".to_string())),
+                                                                                        ("start_ID", tnetstring::Data::Integer(end_ID as isize+1)),
+                                                                                        ("end_ID", tnetstring::Data::Integer(end_ID as isize+1025))
+                                                                                        ], &mut answer);
+
+                                                    network.send_cheap(&answer[..]);
+                                                }
+                                            }
+                                        }
+
+                                        else if message_type == "Init"
+                                        {
+                                            match backend_state
+                                            {
+                                                None =>
+                                                {
+                                                    if let (Some(&tnetstring::Data::Integer(start_ID)), Some(&tnetstring::Data::Integer(end_ID))) = (tnetstring::get_field("start_ID", &data), tnetstring::get_field("end_ID", &data))
+                                                    {
+                                                        backend_state = Some (ProtocolBackendState { start_ID: start_ID as u32, end_ID: end_ID as u32, author_ID: start_ID as u32 });
+                                                    }
+                                                },
+                                                _ => ()
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
                             else if buffer[4] == 'M' as u8
@@ -1210,7 +1252,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
             if backend_state.is_none() & (own_port < other_port)
             {
-                network.send(&['r' as u8][..]); //retry init
+                network.send_cheap("23:4:type,12:Init request,}".as_bytes()); //retry init
             }
 		}
 	}).expect("Could not start the backend thread. Good bye.");
