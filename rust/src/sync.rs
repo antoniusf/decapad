@@ -58,6 +58,11 @@ pub mod spsc_255
                 return false;
             }
         }
+
+        pub fn blocking_push (&self, item: u8)
+        {
+            while !self.push(item) {}
+        }
     }
 
     unsafe impl Send for Producer {} //TODO: formal proof?

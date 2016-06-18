@@ -974,36 +974,6 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                 }
                             }
 
-                            //if 'R' as u8 == buffer[4]
-                            //{
-                            //    if backend_state.is_none()
-                            //    {
-                            //        if bytes == 4+1+4+4
-                            //        {
-                            //            let start_ID = deserialize_u32(&buffer[5..9]);
-                            //            let end_ID = deserialize_u32(&buffer[9..13]);
-                            //            backend_state = Some(ProtocolBackendState { start_ID: start_ID, end_ID: end_ID, author_ID: start_ID } );
-                            //        }
-                            //    }
-                            //}
-
-                            //else if 'r' as u8 == buffer[4]
-                            //{
-                            //    //send init
-                            //    match backend_state
-                            //    {
-                            //        None => backend_state = Some(ProtocolBackendState { start_ID: 1, end_ID: 1025, author_ID: 1 } ), //TODO: find a better scheme for deciding initialization
-                            //        Some(ProtocolBackendState {end_ID, ..}) =>
-                            //        {
-                            //            let mut send_buffer: Vec<u8> = Vec::new();
-                            //            send_buffer.push('R' as u8);
-                            //            serialize_u32(end_ID+1, &mut send_buffer);
-                            //            serialize_u32(end_ID+1025, &mut send_buffer);
-                            //            network.send(&send_buffer[..]);
-                            //        }
-                            //    }
-                            //}
-
                             else if buffer[4] == 'm' as u8
                             {
                                 let message_id = deserialize_u32(&buffer[5..9]);
@@ -1491,7 +1461,7 @@ pub unsafe extern fn rust_try_sync_text (ffi_data: *mut FFIData)
         {
             if msg == 'r' as u8
             {
-                while !ffi.sender.push(22) {} //ASCII 'SYN'
+                ffi.sender.blocking_push(22); //ASCII 'SYN'
                 ffi.state = FrontendSyncstate::syncing;
                 frontend_finish_sync(&mut *ffi);
             }
@@ -1511,7 +1481,7 @@ pub unsafe extern fn rust_blocking_sync_text (ffi_data: *mut FFIData)
 
     if ffi.state == FrontendSyncstate::unsynced
     {
-        while !ffi.sender.push(22) {} //ASCII 'SYN'
+        ffi.sender.blocking_push(22); //ASCII 'SYN'
         ffi.state = FrontendSyncstate::syncing;
         frontend_finish_sync(&mut *ffi);
     }
@@ -1524,7 +1494,7 @@ pub unsafe extern fn rust_sync_unlock (ffi_data: *mut FFIData)
     let mut ffi = Box::from_raw(ffi_data);
     if ffi.state == FrontendSyncstate::lockedsync
     {
-        while !ffi.sender.push(2) {} //ASCII 'STX'
+        ffi.sender.blocking_push(2); //ASCII 'STX'
         ffi.state = FrontendSyncstate::unsynced;
     }
     else
@@ -1540,11 +1510,11 @@ pub unsafe extern fn rust_send_cursor (cursor: u32, ffi_data: *mut FFIData)
     let mut ffi = Box::from_raw(ffi_data);
     if ffi.state == FrontendSyncstate::lockedsync
     {
-        while !ffi.sender.push(31) {} //ASCII 'US'
-        while !ffi.sender.push(cursor as u8) {}
-        while !ffi.sender.push((cursor >> 8) as u8) {}
-        while !ffi.sender.push((cursor >> 16) as u8) {}
-        while !ffi.sender.push((cursor >> 24) as u8) {} //TODO: blocking push function
+        ffi.sender.blocking_push(31); //ASCII 'US'
+        ffi.sender.blocking_push(cursor as u8);
+        ffi.sender.blocking_push((cursor >> 8) as u8);
+        ffi.sender.blocking_push((cursor >> 16) as u8);
+        ffi.sender.blocking_push((cursor >> 24) as u8);
     }
     else
     {
