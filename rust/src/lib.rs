@@ -10,8 +10,9 @@ use sync::spsc_255::{self, Producer, Consumer};
 mod tnetstring;
 
 mod crc;
-
 use crc::crc;
+
+mod utf8;
 
 use std::{mem, net, str, char, thread, process};
 
