@@ -93,6 +93,34 @@ fn encode (data: &Data, result: &mut Vec<u8>)
     }
 }
 
+fn encode_string_dict ( dict: Vec<(&str, Data)>, result: &mut Vec<u8> )
+{
+
+    let mut tnet_dict = Vec::new();
+
+    for (key, value) in dict
+    {
+        tnet_dict.push((Data::String(key.to_string()), value));
+    }
+
+    encode(&Data::Dict(tnet_dict), result);
+}
+
+#[test]
+fn test_encode_string_dict ()
+{
+
+    let mut result = Vec::new();
+
+    encode_string_dict( vec![
+                            ("first", Data::Bool(true)),
+                            ("second", Data::Integer(2)),
+                            ("third", Data::String("hello".to_string()))
+                            ], &mut result);
+
+    assert!("44:5:first,4:true!6:second,1:2#5:third,5:hello,}".as_bytes() == &result[..]);
+}
+
 fn decode_integer (string: &mut &[u8], terminator: u8) -> Result<isize, &'static str>
 {
     let mut result: isize = 0;
