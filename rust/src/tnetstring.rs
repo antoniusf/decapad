@@ -254,3 +254,40 @@ fn test_encode_decode()
     assert_eq!(decode(&mut &encoded_data[..]).unwrap(), data);
     println!("{:?}", decode(&mut &encoded_data[..]));
 }
+
+fn get_field<'a, 'b> (name: &'a str, data: &'b Data) -> Option<&'b Data>
+{
+
+    if let &Data::Dict(ref dict) = data
+    {
+        for &(ref key, ref value) in dict.iter()
+        {
+            if let &Data::String(ref string) = key
+            {
+                if &string[..] == name
+                {
+                    return Some(value);
+                }
+            }
+        }
+
+        return None;
+    }
+
+    return None;
+}
+
+#[test]
+fn test_get_field()
+{
+    let mut dict = Vec::new();
+    dict.push((Data::String("first".to_string()), Data::Bool(true)));
+    dict.push((Data::String("second".to_string()), Data::Integer(2)));
+    dict.push((Data::String("third".to_string()), Data::String("hello".to_string())));
+
+    let dict_data = Data::Dict(dict);
+
+    assert!( get_field("first", &dict_data) == Some(&Data::Bool(true)));
+    assert!( get_field("second", &dict_data) == Some(&Data::Integer(2)));
+    assert!( get_field("third", &dict_data) == Some(&Data::String("hello".to_string())));
+}
