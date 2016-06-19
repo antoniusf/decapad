@@ -1,6 +1,6 @@
 use std::char;
 
-struct Utf8StreamConverter
+pub struct Utf8StreamConverter
 {
     codepoint: u32,
     byte_length: usize,
@@ -8,12 +8,12 @@ struct Utf8StreamConverter
 
 impl Utf8StreamConverter
 {
-    fn new () -> Utf8StreamConverter
+    pub fn new () -> Utf8StreamConverter
     {
         Utf8StreamConverter { codepoint: 0, byte_length: 0 }
     }
 
-    fn input (&mut self, byte: u8) -> Option<char>
+    pub fn input (&mut self, byte: u8) -> Option<char>
     {
         if self.byte_length == 0
         {

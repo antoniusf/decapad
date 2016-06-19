@@ -474,9 +474,6 @@ void
 rust_blocking_sync_text (void *ffi_box_ptr);
 
 void
-rust_sync_unlock (void *ffi_box_ptr);
-
-void
 rust_send_cursor (Uint32 cursor, void *ffi_box_ptr);
 
 void
@@ -688,7 +685,6 @@ int main (void)
 #else
     void *ffi_box_ptr = start_backend(2001, 2002, &buffer);
 #endif
-    rust_sync_unlock(ffi_box_ptr);
 
 
     //main loop
@@ -817,7 +813,6 @@ int main (void)
                             if (program_state == STATE_PAD)
                             {
                                 rust_send_cursor(buffer.cursor, ffi_box_ptr);
-                                rust_sync_unlock(ffi_box_ptr);
                             }
                         } break;
 
@@ -848,7 +843,6 @@ int main (void)
                             if (program_state == STATE_PAD)
                             {
                                 rust_send_cursor(buffer.cursor, ffi_box_ptr);
-                                rust_sync_unlock(ffi_box_ptr);
                             }
                         } break;
 
@@ -881,7 +875,6 @@ int main (void)
                             if (program_state == STATE_PAD)
                             {
                                 rust_send_cursor(buffer.cursor, ffi_box_ptr);
-                                rust_sync_unlock(ffi_box_ptr);
                             }
                         } break;
 
@@ -904,7 +897,6 @@ int main (void)
                             if (program_state == STATE_PAD)
                             {
                                 rust_send_cursor(buffer.cursor, ffi_box_ptr);
-                                rust_sync_unlock(ffi_box_ptr);
                             }
                         } break;
 
@@ -1066,7 +1058,6 @@ int main (void)
         if ( (program_state == STATE_PAD) && ((click_x != -1) || (click_y != -1)) )
         {
             rust_send_cursor(buffer.cursor, ffi_box_ptr);
-            rust_sync_unlock(ffi_box_ptr);
         }
         click_x = click_y = -1;
 
@@ -1211,7 +1202,6 @@ int main (void)
         SDL_Delay(30);//TODO: how big should the delay be?
 
         rust_try_sync_text(ffi_box_ptr);
-        rust_sync_unlock(ffi_box_ptr);
 
     }
 

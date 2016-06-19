@@ -525,29 +525,13 @@ pub struct ThreadPointerWrapper
 
 unsafe impl Send for ThreadPointerWrapper {}
 
-#[derive(PartialEq, Eq)]
-enum FrontendSyncstate
-{
-    lockedsync,
-    unsynced,
-    syncing
-}
-
-#[derive(PartialEq, Eq)]
-enum BackendSyncstate
-{
-    lockedsync,
-    unsynced,
-    syncing
-}
-
 pub struct FFIData
 {
     sender: Producer,
     receiver: Consumer,
-    tent: OneThreadTent,
-    state: FrontendSyncstate,
-    is_buffer_locked: Arc<AtomicBool>
+    sync_ready: Arc<AtomicBool>,
+    buffer_locked: Arc<AtomicBool>,
+    buffer_synced: Arc<AtomicBool>
 }
 
 
@@ -704,15 +688,18 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 {
 	
 	let (input_sender, input_receiver): (Producer, Consumer) = spsc_255::new();
-    let (tent, other_thread_tent) = OneThreadTent::new();
-    let is_buffer_synchronized = Arc::new(AtomicBool::new(true));
-    let is_buffer_locked = Arc::new(AtomicBool::new(false));
-    let is_buffer_synchronized_clone = is_buffer_synchronized.clone();
-    let is_buffer_locked_clone = is_buffer_locked.clone();
+
+    let sync_ready = Arc::new(AtomicBool::new(false));
+    let sync_ready_clone = sync_ready.clone();
+
+    let buffer_locked = Arc::new(AtomicBool::new(false));
+    let buffer_locked_clone = buffer_locked.clone();
+
+    let buffer_synced = Arc::new(AtomicBool::new(true));
+    let buffer_synced_clone = buffer_synced.clone();
 
     let c_pointers = ThreadPointerWrapper { text_buffer: c_text_buffer_ptr };
 
-    let mut syncstate = BackendSyncstate::lockedsync;
     let (sender, syncstate_receiver) = spsc_255::new();
 	
 	thread::Builder::new().name("Rust".to_string()).spawn(move ||
@@ -734,6 +721,9 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                 needs_updating: false
             }
         ;
+
+        //stream converter for the GUI threads character stream
+        let mut converter = utf8::Utf8StreamConverter::new();
 
         //network
 		let mut own_socket = net::UdpSocket::bind(("127.0.0.1", own_port)).expect("Socket fail!");
@@ -1058,36 +1048,16 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 			
 			//check input queue
 			{
-				let mut new_text_raw: Vec<u8> = Vec::new();
-				while let Some(byte) = input_receiver.pop()
-				{
-					new_text_raw.push(byte);
-				}
-
-                if new_text_raw.len() > 0
+                while let Some(byte) = input_receiver.pop()
                 {
-                    let new_text = str::from_utf8(&new_text_raw[..]).expect("Got invalid UTF-8 from SDL!");
-
-                    //println!("Received text!");
-
-                    let mut text_iter = new_text.chars();
-                    while let Some(character) = text_iter.next()
+                    if let Some(character) = converter.input(byte)
                     {
                         if character == 127 as char
                         {
-                            match syncstate
+                            if text_buffer.needs_updating
                             {
-                                BackendSyncstate::lockedsync => panic!("Can't insert or delete in lockedsync mode"),
-                                _ => ()
-                            }
-
-                            if new_text.len() > 1
-                            {
-                                if text_buffer.needs_updating
-                                {
-                                    render_text(&set, &mut text_buffer); //make sure we get the correct cursor position for deleting...
-                                    //text_buffer.needs_updating = false; //TODO: revisit whats going on with the cursor position here
-                                }
+                                render_text(&set, &mut text_buffer); //make sure we get the correct cursor position for deleting...
+                                text_buffer.needs_updating = false; //TODO: revisit whats going on with the cursor position here
                             }
 
                             if text_buffer.cursor_globalPos > 0
@@ -1106,68 +1076,24 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
                         else if character == 31 as char //ASCII unit separator: sent to indicate that the previous stream of text is terminated and cursor position must be updated
                         {
-                            assert!(syncstate == BackendSyncstate::lockedsync, "Tried to update cursor position (ASCII 31) while not synchronized!");
                             let mut new_cursor_pos: usize = 0;
 
-                            let byte =
-                                if let Some(byte) = text_iter.next() { (byte as u8) as usize }
-                                else { input_receiver.blocking_pop() as usize };
+                            new_cursor_pos = input_receiver.blocking_pop() as usize;
+                            new_cursor_pos += (input_receiver.blocking_pop() as usize)<<8;
+                            new_cursor_pos += (input_receiver.blocking_pop() as usize)<<16;
+                            new_cursor_pos += (input_receiver.blocking_pop() as usize)<<32;
 
-                            new_cursor_pos = byte;
+                            if new_cursor_pos > text_buffer.text.len()
+                            {
+                                new_cursor_pos = text_buffer.text.len();
+                            }
 
-                            let byte =
-                                if let Some(byte) = text_iter.next() { (byte as u8) as usize }
-                                else { input_receiver.blocking_pop() as usize };
-
-                            new_cursor_pos += byte<<8;
-
-                            let byte =
-                                if let Some(byte) = text_iter.next() { (byte as u8) as usize }
-                                else { input_receiver.blocking_pop() as usize };
-
-                            new_cursor_pos += byte<<16;
-
-                            let byte =
-                                if let Some(byte) = text_iter.next() { (byte as u8) as usize }
-                                else { input_receiver.blocking_pop() as usize };
-
-                            new_cursor_pos += byte<<32;
-
-                            assert!(new_cursor_pos <= text_buffer.text.len());
                             println!("new cursor position: {}", new_cursor_pos);
                             text_buffer.cursor_globalPos = new_cursor_pos;
 
                             text_buffer.active_insert = None;
                             text_buffer.cursor_ID = None;
                             text_buffer.cursor_charPos = None;
-                        }
-
-                        else if character == 22 as char //ASCII 'SYN'
-                        {
-                            match syncstate
-                            {
-                                BackendSyncstate::lockedsync => panic!("Can't sync while in lockedsync mode"),
-                                BackendSyncstate::unsynced =>
-                                {
-                                    assert!(input_receiver.len() == 0);
-                                    synchronize_buffers(&text_buffer, &c_pointers, &is_buffer_locked);
-                                    syncstate = BackendSyncstate::lockedsync;
-                                    assert!(sender.push('s' as u8));
-                                },
-                                _ => ()
-                            }
-                        }
-
-                        else if character == 2 as char //ASCII 'STX'
-                        {
-                            if syncstate == BackendSyncstate::lockedsync
-                            {
-                                syncstate = BackendSyncstate::unsynced;
-                            }
-                            else
-                            {
-                                panic!("Trying to unlock from other than lockedsync mode");
-                            }
                         }
 
                         else
@@ -1178,12 +1104,6 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                 
                                 Some(ref mut inner_backend_state) =>
                                 {
-                                    match syncstate
-                                    {
-                                        BackendSyncstate::lockedsync => panic!("Can't insert or delete in lockedsync mode"),
-                                        _ => ()
-                                    }
-
                                     insert_character(&mut set, character, &mut network, &mut text_buffer, inner_backend_state);
                                     text_buffer.needs_updating = true;
                                 }
@@ -1193,33 +1113,35 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                 }
 			}
 
-            if (text_buffer.needs_updating) & (syncstate == BackendSyncstate::unsynced)
+            if text_buffer.needs_updating
             {
                 render_text(&set, &mut text_buffer);//TODO: initialize with correct cursor position
-                assert!(sender.push('r' as u8) == true);
                 text_buffer.needs_updating = false;
 
                 println!("Newly rendered text: {:?}", &text_buffer.text);
                 println!("Data: {:?}", &set);
+
+                sync_ready.store(true, Ordering::Relaxed);
+                while !buffer_locked.load(Ordering::Acquire) {}
+                synchronize_buffers(&text_buffer, &c_pointers, &buffer_locked);
+                buffer_synced.store(true, Ordering::Relaxed);
             }
 
-            if syncstate == BackendSyncstate::unsynced
+            else //check whether the GUI thread has requested a sync on its own
             {
-                //TODO: wait a bit here?
-                if let Some(message) = input_receiver.peek()
+                if buffer_locked.load(Ordering::Acquire)
                 {
-                    if message == 22
+                    if !buffer_synced.load(Ordering::Relaxed)
                     {
-                        input_receiver.pop();
-
-                        //synchronize
-                        synchronize_buffers(&text_buffer, &c_pointers, &is_buffer_locked);
-                        syncstate = BackendSyncstate::lockedsync;
-                        assert!(sender.push('s' as u8));
+                        synchronize_buffers(&text_buffer, &c_pointers, &buffer_locked);
+                        buffer_synced.store(true, Ordering::Relaxed);
+                    }
+                    else
+                    {
+                        buffer_locked.store(false, Ordering::Release);
                     }
                 }
             }
-
 
             if backend_state.is_none() & (own_port < other_port)
             {
@@ -1232,9 +1154,9 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                 {
                                     sender: input_sender,
                                     receiver: syncstate_receiver,
-                                    state: FrontendSyncstate::lockedsync,
-                                    tent: other_thread_tent,
-                                    is_buffer_locked: is_buffer_locked_clone
+                                    sync_ready: sync_ready_clone,
+                                    buffer_locked: buffer_locked_clone,
+                                    buffer_synced: buffer_synced_clone
                                 });
 	return Box::into_raw(return_box);
 }
@@ -1402,8 +1324,8 @@ fn delete_character (position: usize, set: &mut TextInsertSet, network: &mut Net
 pub unsafe extern fn rust_text_input (text: *const u8, length: i32, box_ptr: *mut FFIData) //only for input, not command sending!!!
 {
 	let mut ffi = Box::from_raw(box_ptr);
-    assert!(ffi.state == FrontendSyncstate::unsynced);
 
+    ffi.buffer_synced.store(false, Ordering::Relaxed);
     for i in 0..length as isize
     {
         while ffi.sender.push(*text.offset(i)) == false
@@ -1414,64 +1336,17 @@ pub unsafe extern fn rust_text_input (text: *const u8, length: i32, box_ptr: *mu
 	mem::forget(ffi);
 }
 
-fn frontend_finish_sync (ffi: &mut FFIData)
-{
-    ffi.is_buffer_locked.store(true, Ordering::Release);
-    if ffi.state == FrontendSyncstate::syncing
-    {
-        loop
-        {
-            if let Some(msg) = ffi.receiver.pop()
-            {
-                if msg == 's' as u8
-                {
-                    ffi.state = FrontendSyncstate::lockedsync;
-                    break;
-                }
-                else if msg == 'f' as u8
-                {
-                    ffi.state = FrontendSyncstate::unsynced;
-                    break;
-                }
-                else if msg == 'r' as u8
-                {
-                }
-                else
-                {
-                    println!("WTF?!");
-                }
-            }
-        }
-    }
-
-    else
-    {
-        println!("frontend_finish sync was called while not in syncing state.");
-    }
-
-    assert!(ffi.is_buffer_locked.load(Ordering::Acquire) == false);
-}
-
 #[no_mangle]
 pub unsafe extern fn rust_try_sync_text (ffi_data: *mut FFIData)
 {
     let mut ffi = Box::from_raw(ffi_data);
-    if ffi.state == FrontendSyncstate::unsynced
+
+    if ffi.sync_ready.load(Ordering::Relaxed)
     {
-        if let Some(msg) = ffi.receiver.pop()
-        {
-            if msg == 'r' as u8
-            {
-                ffi.sender.blocking_push(22); //ASCII 'SYN'
-                ffi.state = FrontendSyncstate::syncing;
-                frontend_finish_sync(&mut *ffi);
-            }
-            else
-            {
-                println!("Frontend thread received a non-'sync ready' message while in state 'unsynced'. This should never happen.");
-            }
-        }
+        ffi.buffer_locked.store(true, Ordering::Release);
+        while ffi.buffer_locked.load(Ordering::Acquire) {}
     }
+
     mem::forget(ffi);
 }
 
@@ -1480,28 +1355,12 @@ pub unsafe extern fn rust_blocking_sync_text (ffi_data: *mut FFIData)
 {
     let mut ffi = Box::from_raw(ffi_data);
 
-    if ffi.state == FrontendSyncstate::unsynced
+    if !ffi.buffer_synced.load(Ordering::Relaxed)
     {
-        ffi.sender.blocking_push(22); //ASCII 'SYN'
-        ffi.state = FrontendSyncstate::syncing;
-        frontend_finish_sync(&mut *ffi);
+        ffi.buffer_locked.store(true, Ordering::Release);
+        while ffi.buffer_locked.load(Ordering::Acquire) {}
     }
-    mem::forget(ffi);
-}
 
-#[no_mangle]
-pub unsafe extern fn rust_sync_unlock (ffi_data: *mut FFIData)
-{
-    let mut ffi = Box::from_raw(ffi_data);
-    if ffi.state == FrontendSyncstate::lockedsync
-    {
-        ffi.sender.blocking_push(2); //ASCII 'STX'
-        ffi.state = FrontendSyncstate::unsynced;
-    }
-    else
-    {
-        //println!("Trying to unlock from non-unlock state. Nothing will happen.")
-    }
     mem::forget(ffi);
 }
 
@@ -1509,17 +1368,12 @@ pub unsafe extern fn rust_sync_unlock (ffi_data: *mut FFIData)
 pub unsafe extern fn rust_send_cursor (cursor: u32, ffi_data: *mut FFIData)
 {
     let mut ffi = Box::from_raw(ffi_data);
-    if ffi.state == FrontendSyncstate::lockedsync
-    {
-        ffi.sender.blocking_push(31); //ASCII 'US'
-        ffi.sender.blocking_push(cursor as u8);
-        ffi.sender.blocking_push((cursor >> 8) as u8);
-        ffi.sender.blocking_push((cursor >> 16) as u8);
-        ffi.sender.blocking_push((cursor >> 24) as u8);
-    }
-    else
-    {
-        println!("Warning: trying to update cursor while not in lockedsync");
-    }
+
+    ffi.sender.blocking_push(31); //ASCII 'US'
+    ffi.sender.blocking_push(cursor as u8);
+    ffi.sender.blocking_push((cursor >> 8) as u8);
+    ffi.sender.blocking_push((cursor >> 16) as u8);
+    ffi.sender.blocking_push((cursor >> 24) as u8);
+
     mem::forget(ffi);
 }
