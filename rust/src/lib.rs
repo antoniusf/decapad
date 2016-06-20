@@ -1243,7 +1243,7 @@ fn insert_character<'a> (set: &mut TextInsertSet, character: char, network: &mut
         {
             if position == 0
             {
-                if set.len() == 0
+                if text_buffer.ID_table.len() == 0
                 {
                     (0, 0)
                 }
