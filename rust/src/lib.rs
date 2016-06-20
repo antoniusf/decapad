@@ -1067,8 +1067,6 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                 text_buffer.needs_updating = true;
 
                                 text_buffer.active_insert = None;
-                                text_buffer.cursor_ID = None; //TODO: add sorting inserts by timestamp + ID (render_text), enable setting cursor_ID and charPos here
-                                text_buffer.cursor_charPos = None;
 
                                 text_buffer.needs_updating = true;
                             }
@@ -1311,7 +1309,11 @@ fn delete_character (position: usize, set: &mut TextInsertSet, network: &mut Net
     {
         let mut insert = get_insert_by_ID_mut(text_buffer.ID_table[position], &mut *set).expect("delete_character says: ID_table contains at least one ID that is not associated to any insert in our vector. This should not happen.");
 
-        insert.content[text_buffer.charPos_table[position] as usize] = 127 as char;
+        let position_in_insert = text_buffer.charPos_table[position];
+        insert.content[position_in_insert as usize] = 127 as char;
+        text_buffer.cursor_ID = Some(insert.ID);
+        text_buffer.cursor_charPos = Some(position_in_insert);
+
         network.enqueue_delete(insert.ID, text_buffer.charPos_table[position], text_buffer.charPos_table[position]+1);
         //TODO: send_now
     }
