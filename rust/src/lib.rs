@@ -28,6 +28,7 @@ use std::cell::{Cell, RefCell, Ref, RefMut};
 use std::ops::Deref;
 use std::sync::mpsc;
 use std::time::Duration;
+use std::cmp::{min, max};
 
 extern crate libc;
 
@@ -412,8 +413,8 @@ impl NetworkState
                 SendType::Full => (),
                 SendType::Delete { ref mut start_pos, ref mut end_pos } =>
                 {
-                    *start_pos = start;
-                    *end_pos = end;
+                    *start_pos = min(*start_pos, start);
+                    *end_pos = max(*end_pos, end);
                 },
                 SendType::Append {..} => append_new = true
             }
@@ -1314,7 +1315,7 @@ fn delete_character (position: usize, set: &mut TextInsertSet, network: &mut Net
         text_buffer.cursor_ID = Some(insert.ID);
         text_buffer.cursor_charPos = Some(position_in_insert);
 
-        network.enqueue_delete(insert.ID, text_buffer.charPos_table[position], text_buffer.charPos_table[position]+1);
+        network.enqueue_delete(insert.ID, position_in_insert, position_in_insert+1);
         //TODO: send_now
     }
 }
