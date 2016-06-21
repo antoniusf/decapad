@@ -1346,6 +1346,7 @@ pub unsafe extern fn rust_try_sync_text (ffi_data: *mut FFIData)
 
     if ffi.sync_ready.load(Ordering::Relaxed)
     {
+        ffi.sync_ready.store(false, Ordering::Relaxed);
         ffi.buffer_locked.store(true, Ordering::Release);
         while ffi.buffer_locked.load(Ordering::Acquire) {}
     }
