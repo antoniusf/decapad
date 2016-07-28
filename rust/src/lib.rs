@@ -743,7 +743,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 		const BUFFER_LENGTH: usize = 10000;
 		let mut buffer = [0u8; BUFFER_LENGTH];
 
-
+        let mut resend_timer = 0;
 
 		loop
 		{
@@ -1034,9 +1034,6 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                                 {
                                     network.cheap_queue.remove(index);
                                 }
-
-                                let message = &buffer[9..bytes];
-                                //message interpretation code goes here
                             }
                         }
                     }
@@ -1045,7 +1042,16 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 			}
 
             //resend un-ACKed inserts
-            network.resend(&set);
+            if resend_timer == 0
+            {
+                network.resend(&set);
+
+                if backend_state.is_none() & (own_port < other_port)
+                {
+                    network.send_cheap("23:4:type,12:Init request,}".as_bytes()); //retry init
+                }
+            }
+            resend_timer = (resend_timer+1)%100;
 			
 			//check input queue
 			{
@@ -1140,11 +1146,6 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                         buffer_locked.store(false, Ordering::Release);
                     }
                 }
-            }
-
-            if backend_state.is_none() & (own_port < other_port)
-            {
-                network.send_cheap("23:4:type,12:Init request,}".as_bytes()); //retry init
             }
 		}
 	}).expect("Could not start the backend thread. Good bye.");
