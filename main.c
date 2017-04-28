@@ -1053,10 +1053,10 @@ int main (void)
             draw_text(&buffer, buffer.text.array, pixels, 0, fontface, click_x, click_y);
         }
 
-        buffer.ahead_cursor = buffer.cursor;
 
         if ( (program_state == STATE_PAD) && ((click_x != -1) || (click_y != -1)) )
         {
+            buffer.ahead_cursor = buffer.cursor;
             rust_send_cursor(buffer.cursor, ffi_box_ptr);
         }
         click_x = click_y = -1;
