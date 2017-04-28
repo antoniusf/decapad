@@ -766,7 +766,7 @@ int main (void)
 
                         case SDLK_BACKSPACE:
                         {
-                            if (buffer.cursor > 0)
+                            if (buffer.ahead_cursor > 0)
                             {
                                 if (program_state == STATE_PAD)
                                 {
