@@ -728,7 +728,8 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
         //network
 		let mut own_socket = net::UdpSocket::bind(("127.0.0.1", own_port)).expect("Socket fail!");
-        own_socket.set_nonblocking(true);
+        //own_socket.set_nonblocking(true);
+        own_socket.set_read_timeout(Some(Duration::from_millis(100)));
         let mut network =
             NetworkState
             {
@@ -748,13 +749,13 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 		loop
 		{
 			//check network
-			match network.socket.recv_from(&mut buffer)
+			match network.socket.recv_from(&mut buffer) //TODO: use mio to check both the socket and the pipe
 			{
 				Ok((bytes, address)) => 
                 {
                     if address.port() == other_port //TODO: check IP address
                     {
-                        println!("Received data.\n{:?}\n", &buffer[4..bytes]);
+                        println!("Received data.\n | {:?}", &buffer[4..bytes]);
 
                         let checkvalue = deserialize_u32(&buffer[0..4]);
                         if crc(&buffer[4..bytes]) == checkvalue
@@ -975,6 +976,8 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
 
                                 network.send(&ack[..]);
 
+                                println!(" | Message: {}", std::str::from_utf8(&buffer[9..bytes]).unwrap_or("<can't decode>"));
+
                                 if let Ok(data) = tnetstring::decode(&mut &buffer[9..bytes])
                                 {
                                     if let Some(&tnetstring::Data::String(ref message_type)) = tnetstring::get_field("type", &data)
@@ -1051,7 +1054,7 @@ fn start_backend_safe (own_port: u16, other_port: u16, c_text_buffer_ptr: *mut T
                     network.send_cheap("23:4:type,12:Init request,}".as_bytes()); //retry init
                 }
             }
-            resend_timer = (resend_timer+1)%100;
+            resend_timer = (resend_timer+1)%3;
 			
 			//check input queue
 			{
