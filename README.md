@@ -1,0 +1,5 @@
+# Hello and Goodbye
+
+For the longest time, this project’s description read “backup only for now, will say more when this is in an acceptable state”. Turns out, it never got to a state I considered acceptable, and it probably never will. So while “now” technically isn’t the best time to say a bit more about it, it’s unlikely that a better time will come.
+
+This was once supposed to be a decentralized collaborative text editor. At the time I started this project, most collaborative editing solutions used operational transforms, which can be a little icky and are quite hard to do without a central server. Decapad’s protocol was – even though I didn’t know it when I began – based on CRDTs instead. I feel like CRDT-based solutions have gained quite a bit of popularity in the recent years; this, combined with the fact that I have, well, gotten older and more realistic in that period of time, lead me to conclude that this wasn’t actually that useful of a thing to be working on anymore. Hopefully I’ll post a write-up of things I learned at some point in the future :)
